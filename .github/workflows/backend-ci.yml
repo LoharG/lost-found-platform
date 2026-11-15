@@ -1,3 +1,4 @@
+
 name: Backend CI
 
 on:
@@ -11,6 +12,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: lost_found_db
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lost_found_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     env:
       GOOGLE_CLIENT_ID: test-client-id
@@ -34,6 +50,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Initialize test database schema
+        env:
+          PGPASSWORD: admin
+        run: psql -h localhost -p 5434 -U postgres -d lost_found_db -f test-db/schema.sql
+
+      - name: Seed test database
+        env:
+          PGPASSWORD: admin
+        run: psql -h localhost -p 5434 -U postgres -d lost_found_db -f test-db/seed.sql
 
       - name: Run backend tests
         run: npx jest --runInBand
