@@ -59,7 +59,7 @@ jobs:
       - name: Seed test database
         env:
           PGPASSWORD: admin
-        run: psql -h localhost -p 5434 -U postgres -d lost_found_db -f test-db/seed.sql
+        run: psql -v ON_ERROR_STOP=1 -h localhost -p 5434 -U postgres -d lost_found_db -f test-db/seed.sql
 
       - name: Run backend tests
         run: npx jest --runInBand

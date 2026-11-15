@@ -1,6 +1,3 @@
-GET /api/items/16
-
-
 INSERT INTO users (
     id,
     google_id,
