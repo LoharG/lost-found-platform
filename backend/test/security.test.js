@@ -4,7 +4,7 @@ const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const sharp = require("sharp");
 const { loadConfig } = require("../src/config");
-const { setup, pngImage, jpegWithGps, storedFiles, createItem, testEnv } = require("./helpers");
+const { setup, pngImage, jpegWithGps, storedFiles, createItem, testEnv, claimFound } = require("./helpers");
 
 let ctx;
 before(async () => {
@@ -32,7 +32,7 @@ describe("configuration guards", () => {
   });
 
   test("secure cookies are on automatically for an HTTPS app URL", () => {
-    const config = loadConfig({ ...testEnv(), ENABLE_TEST_AUTH: "", NODE_ENV: "production", APP_URL: "https://lostfound.example" });
+    const config = loadConfig({ ...testEnv(), ENABLE_TEST_AUTH: "", NODE_ENV: "production", APP_URL: "https://lostfound.example", ALLOW_TEST_PAYMENTS: "true" });
     assert.equal(config.session.secureCookie, true);
     assert.equal(config.enableTestAuth, false);
   });
@@ -51,7 +51,7 @@ describe("public responses never expose private data", () => {
       ownershipQuestion: "What is the lock screen photo?",
     });
     const claimant = await ctx.agent({ email: "claimant-private@example.com" });
-    await claimant.post(`/api/items/${item.id}/claims`).send({ answer: "My dog Bruno" }).expect(201);
+    await claimFound(claimant, item, "My dog Bruno");
 
     const anon = ctx.anonymous();
     const list = await anon.get("/api/items?type=found").expect(200);
@@ -146,6 +146,8 @@ describe("uploads", () => {
       .field("category", "other")
       .field("location", "Somewhere")
       .field("date", new Date().toISOString().slice(0, 10))
+      .field("acceptRewardTerms", "true")
+      .field("expectedRewardPaise", "35000")
       .attach("images", Buffer.from("<html><script>alert(document.cookie)</script></html>"), {
         filename: "photo.png",
         contentType: "image/png",
@@ -166,6 +168,8 @@ describe("uploads", () => {
       .field("category", "other")
       .field("location", "Somewhere")
       .field("date", new Date().toISOString().slice(0, 10))
+      .field("acceptRewardTerms", "true")
+      .field("expectedRewardPaise", "35000")
       .attach("images", await pngImage(), "ok.png")
       .attach("images", Buffer.from("GIF89a not really"), "bad.gif");
     assert.equal(res.status, 400);
@@ -181,7 +185,9 @@ describe("uploads", () => {
         .field("title", "Limits")
         .field("category", "other")
         .field("location", "Somewhere")
-        .field("date", new Date().toISOString().slice(0, 10));
+        .field("date", new Date().toISOString().slice(0, 10))
+        .field("acceptRewardTerms", "true")
+        .field("expectedRewardPaise", "35000");
 
     const huge = Buffer.alloc(ctx.config.uploads.maxFileBytes + 1024, 1);
     const big = await base().attach("images", huge, "huge.png");
@@ -209,6 +215,8 @@ describe("uploads", () => {
         .field("category", "other")
         .field("location", "Somewhere")
         .field("date", new Date().toISOString().slice(0, 10))
+        .field("acceptRewardTerms", "true")
+        .field("expectedRewardPaise", "35000")
         .attach("images", await pngImage(), "ok.png");
       assert.equal(res.status, 500);
       assert.equal(storedFiles(ctx.storageDir).length, beforeFiles);

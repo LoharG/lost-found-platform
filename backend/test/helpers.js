@@ -21,6 +21,7 @@ const { createPool } = require("../src/db");
 const { runMigrations } = require("../src/migrate");
 const { createStorage } = require("../src/storage");
 const { createApp } = require("../src/app");
+const { rewardFor } = require("../src/services/pricing");
 
 const ADMIN_URL = process.env.TEST_DATABASE_URL || "postgres://postgres:test@localhost:5544/postgres";
 
@@ -150,10 +151,15 @@ function storedFiles(dir) {
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 
-// Creates a listing via the API with sensible defaults.
+// Creates a listing via the API with sensible defaults. Lost listings include
+// the owner's reward acknowledgement for the category's current amount.
 async function createItem(http, fields = {}, images = []) {
   let req = http.post("/api/items");
   const body = { type: "lost", title: "Black leather wallet", category: "wallet", location: "Pune Railway Station", date: today(), ...fields };
+  if (body.type === "lost" && body.acceptRewardTerms === undefined) {
+    body.acceptRewardTerms = "true";
+    body.expectedRewardPaise = String(rewardFor(body.category));
+  }
   for (const [key, value] of Object.entries(body)) req = req.field(key, String(value));
   for (const [index, buffer] of images.entries()) req = req.attach("images", buffer, `photo-${index}.png`);
   const res = await req;
@@ -161,4 +167,21 @@ async function createItem(http, fields = {}, images = []) {
   return res.body.item;
 }
 
-module.exports = { setup, createDatabase, testEnv, pngImage, jpegWithGps, storedFiles, createItem, today, daysAgo, ADMIN_URL };
+// Claim a FOUND listing as its owner (accepting the current category reward).
+async function claimFound(http, item, answer = "It has my initials inside") {
+  const res = await http.post(`/api/items/${item.id}/claims`).send({ answer, acceptReward: true, expectedRewardPaise: rewardFor(item.category) });
+  if (![200, 201].includes(res.status)) throw new Error(`claim failed ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.claim;
+}
+
+// Owner pays the ₹100 connection fee through the local test-mode provider.
+async function connect(ownerHttp, claimId, outcome = "success") {
+  const checkout = await ownerHttp.post(`/api/claims/${claimId}/checkout`).send({});
+  if (checkout.status !== 200) throw new Error(`checkout failed ${checkout.status} ${JSON.stringify(checkout.body)}`);
+  const { orderId } = checkout.body.checkout;
+  const done = await ownerHttp.post("/api/payments/test/complete").send({ orderId, outcome });
+  const verify = await ownerHttp.post("/api/payments/verify").send({ orderId, paymentId: done.body.paymentId, signature: done.body.signature });
+  return { checkout: checkout.body.checkout, payment: done.body, verify };
+}
+
+module.exports = { setup, claimFound, connect, createDatabase, testEnv, pngImage, jpegWithGps, storedFiles, createItem, today, daysAgo, ADMIN_URL };

@@ -87,7 +87,7 @@ after(async () => {
 
 test("prototype database upgrades in place and keeps its data", async () => {
   const applied = await runMigrations(pool, logger);
-  assert.deepEqual(applied, ["000_base_schema", "001_update_items_user_fk", "002_add_item_type_check", "003_platform_core", "004_site_analytics"]);
+  assert.deepEqual(applied, ["000_base_schema", "001_update_items_user_fk", "002_add_item_type_check", "003_platform_core", "004_site_analytics", "005_rewards_and_paid_connections"]);
   assert.deepEqual(await pendingMigrations(pool), []);
 
   const items = (await pool.query("SELECT id, name, status, category, moderation_state, created_at FROM items ORDER BY id")).rows;
