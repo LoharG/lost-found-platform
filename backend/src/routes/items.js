@@ -8,6 +8,41 @@ const { requireUser } = require("../middleware/security");
 const { parseUploads, storeImages, imagePaths } = require("../services/images");
 const { publicItem, ownerItem } = require("../services/serializers");
 const { findMatches, notifyMatches } = require("../services/matching");
+const { rewardFor, snapshotFor } = require("../services/pricing");
+const { scanFields } = require("../services/contactGuard");
+const { CATEGORIES } = require("../services/items");
+
+// Public listing text is visible before any connection is paid, so contact
+// details are blocked. The poster can edit, or ask a moderator to review a
+// false positive (the listing stays hidden until approved).
+function contactCheck(input) {
+  const hits = scanFields({
+    title: input.title,
+    description: input.description,
+    location: input.location,
+    ownershipQuestion: input.ownershipQuestion,
+  });
+  if (!Object.keys(hits).length) return { flagged: false };
+  if (input.reviewRequested) return { flagged: true, hits };
+  throw new HttpError(
+    422,
+    "Listings can't include phone numbers, emails, UPI IDs or links. Contact details unlock after a paid connection. Edit the highlighted fields, or send the listing for review if this is a mistake.",
+    "contact_detected",
+    { fields: hits }
+  );
+}
+
+// Owners of lost items agree to the category reward when publishing.
+function rewardAcknowledgement(input, category) {
+  if (input.acceptRewardTerms !== true) {
+    throw new HttpError(400, "Please agree to the finder reward and connection fee", "terms_required", { fields: { acceptRewardTerms: ["required"] } });
+  }
+  const current = rewardFor(category);
+  if (input.expectedRewardPaise !== current) {
+    throw new HttpError(409, "The reward for this category has changed. Review the new amount.", "pricing_changed", { rewardPaise: current });
+  }
+  return snapshotFor(category);
+}
 const {
   TRANSITIONS,
   ITEM_SELECT,
@@ -114,6 +149,8 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
 
   router.post("/items", requireUser, limits.report, limits.upload, uploads, async (req, res) => {
     const input = itemInputSchema({ partial: false }).parse(req.body || {});
+    const { flagged } = contactCheck(input);
+    const reward = input.type === "lost" ? rewardAcknowledgement(input, input.category) : null;
     const files = req.files || [];
     const { images, keys } = await storeImages(files, { storage, uploads: config.uploads });
 
@@ -122,8 +159,9 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
       created = await withTransaction(pool, async (db) => {
         const { rows } = await db.query(
           `INSERT INTO items (type, name, category, description, location, date, latitude, longitude,
-                              ownership_question, user_id, status, moderation_state)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', 'visible')
+                              ownership_question, user_id, status, moderation_state, category_confirmed,
+                              reward_paise, reward_pricing_version, reward_terms_version, reward_accepted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, TRUE, $12, $13, $14, CASE WHEN $12::int IS NULL THEN NULL ELSE now() END)
            RETURNING *`,
           [
             input.type,
@@ -136,6 +174,10 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
             input.longitude ?? null,
             input.ownershipQuestion || null,
             req.user.id,
+            flagged ? "pending" : "visible",
+            reward?.rewardPaise ?? null,
+            reward?.pricingVersion ?? null,
+            reward?.termsVersion ?? null,
           ]
         );
         const item = rows[0];
@@ -170,6 +212,20 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
     if (existing.moderation_state === "removed") {
       throw new HttpError(409, "A removed listing cannot be edited", "item_removed");
     }
+    const merged = {
+      title: input.title ?? existing.name,
+      description: input.description ?? existing.description,
+      location: input.location ?? existing.location,
+      ownershipQuestion: input.ownershipQuestion ?? existing.ownership_question,
+      reviewRequested: input.reviewRequested,
+    };
+    const { flagged } = contactCheck(merged);
+    const categoryChanged = input.category !== undefined && input.category !== existing.category;
+    if (categoryChanged && existing.status !== "open") {
+      throw new HttpError(409, "The category can't change while a match is in progress", "category_locked");
+    }
+    // A lost listing's owner re-accepts the reward for the new category.
+    const reward = existing.type === "lost" && categoryChanged ? rewardAcknowledgement(input, input.category) : null;
 
     const { images, keys } = await storeImages(files, { storage, uploads: config.uploads });
     let result;
@@ -196,6 +252,11 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
           latitude: input.latitude,
           longitude: input.longitude,
           ownership_question: input.ownershipQuestion === undefined ? undefined : input.ownershipQuestion || null,
+          category_confirmed: categoryChanged ? true : undefined,
+          reward_paise: reward ? reward.rewardPaise : undefined,
+          reward_pricing_version: reward ? reward.pricingVersion : undefined,
+          reward_terms_version: reward ? reward.termsVersion : undefined,
+          moderation_state: flagged ? "pending" : undefined,
         };
         const sets = [];
         const params = [];
@@ -204,6 +265,7 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
           params.push(value);
           sets.push(`${column} = $${params.length}`);
         }
+        if (reward) sets.push("reward_accepted_at = now()");
         if (sets.length) {
           params.push(id);
           await db.query(`UPDATE items SET ${sets.join(", ")}, updated_at = now() WHERE id = $${params.length}`, params);
@@ -330,6 +392,36 @@ function itemRoutes({ pool, config, storage, notifier, limits, logger }) {
 
     await notifier.deliver(outcome.notifications);
     res.json({ item: await serializeOne(pool, await loadItem(pool, id), req.user), changed: outcome.changed });
+  });
+
+  // Legacy listings: the poster confirms the category (and, for lost items,
+  // accepts the reward) before any new paid connection can start.
+  router.post("/items/:id/confirm-category", requireUser, async (req, res) => {
+    const id = parseId(req.params.id, "Item ID");
+    const input = z
+      .object({
+        category: z.enum(CATEGORIES),
+        acceptRewardTerms: z.boolean().optional(),
+        expectedRewardPaise: z.number().int().positive().optional(),
+      })
+      .strict()
+      .parse(req.body || {});
+    await withTransaction(pool, async (db) => {
+      const item = assertOwner(await loadItem(db, id, { forUpdate: true }), req.user);
+      if (item.status !== "open" && input.category !== item.category) {
+        throw new HttpError(409, "The category can't change while a match is in progress", "category_locked");
+      }
+      const reward = item.type === "lost" ? rewardAcknowledgement(input, input.category) : null;
+      await db.query(
+        `UPDATE items SET category = $2, category_confirmed = TRUE,
+                reward_paise = COALESCE($3, reward_paise), reward_pricing_version = COALESCE($4, reward_pricing_version),
+                reward_terms_version = COALESCE($5, reward_terms_version),
+                reward_accepted_at = CASE WHEN $3::int IS NULL THEN reward_accepted_at ELSE now() END, updated_at = now()
+         WHERE id = $1`,
+        [id, input.category, reward?.rewardPaise ?? null, reward?.pricingVersion ?? null, reward?.termsVersion ?? null]
+      );
+    });
+    res.json({ item: await serializeOne(pool, await loadItem(pool, id), req.user) });
   });
 
   router.get("/items/:id/matches", requireUser, async (req, res) => {
