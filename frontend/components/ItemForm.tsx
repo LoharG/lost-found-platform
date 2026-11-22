@@ -1,0 +1,267 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ImagePlus, LocateFixed, X } from "lucide-react";
+import { errorMessage } from "./AuthProvider";
+import { Alert, Button, Field, Input, Select, Textarea } from "./ui";
+import { api, ApiError, fieldErrors } from "@/lib/api";
+import { todayIso } from "@/lib/format";
+import { useI18n } from "@/lib/i18n/client";
+import { CATEGORIES, type Item, type ItemType } from "@/lib/types";
+
+const MAX_PHOTOS = 5;
+const MAX_MB = 8;
+const ACCEPT = ["image/jpeg", "image/png", "image/webp"];
+
+type Draft = {
+  type: ItemType;
+  title: string;
+  category: string;
+  description: string;
+  location: string;
+  date: string;
+  ownershipQuestion: string;
+  latitude: string;
+  longitude: string;
+};
+
+export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultType?: ItemType }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const editing = Boolean(item);
+  const [draft, setDraft] = useState<Draft>({
+    type: item?.type ?? defaultType,
+    title: item?.title ?? "",
+    category: item?.category ?? "",
+    description: item?.description ?? "",
+    location: item?.location ?? "",
+    date: item?.date ?? todayIso(),
+    ownershipQuestion: item?.ownershipQuestion ?? "",
+    latitude: item?.latitude != null ? String(item.latitude) : "",
+    longitude: item?.longitude != null ? String(item.longitude) : "",
+  });
+  const [files, setFiles] = useState<File[]>([]);
+  const [removeIds, setRemoveIds] = useState<number[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
+  useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
+
+  const existing = (item?.images ?? []).filter((image) => !removeIds.includes(image.id));
+  const set = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setDraft((current) => ({ ...current, [key]: event.target.value }));
+
+  function addFiles(list: FileList | null) {
+    setPhotoError(null);
+    if (!list) return;
+    const next = [...files];
+    for (const file of Array.from(list)) {
+      if (!ACCEPT.includes(file.type)) {
+        setPhotoError(t("form.photos.badType", { name: file.name }));
+        continue;
+      }
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setPhotoError(t("form.photos.tooBig", { name: file.name, mb: MAX_MB }));
+        continue;
+      }
+      if (existing.length + next.length >= MAX_PHOTOS) {
+        setPhotoError(t("form.photos.tooMany", { max: MAX_PHOTOS }));
+        break;
+      }
+      next.push(file);
+    }
+    setFiles(next);
+  }
+
+  function useMyLocation() {
+    if (!("geolocation" in navigator)) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocating(false);
+        setDraft((current) => ({ ...current, latitude: position.coords.latitude.toFixed(6), longitude: position.coords.longitude.toFixed(6) }));
+      },
+      () => setLocating(false),
+      { timeout: 10000 }
+    );
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setErrors({});
+    setFormError(null);
+
+    const form = new FormData();
+    for (const [key, value] of Object.entries(draft)) {
+      if (key === "type" && editing) continue;
+      if ((key === "latitude" || key === "longitude") && !value) continue;
+      form.append(key, value);
+    }
+    if (removeIds.length) form.append("removeImageIds", removeIds.join(","));
+    for (const file of files) form.append("images", file);
+
+    try {
+      const res = await api<{ item: Item }>(editing ? `/items/${item!.id}` : "/items", { method: editing ? "PATCH" : "POST", form });
+      router.push(`/items/${res.item.id}`);
+      router.refresh();
+    } catch (error) {
+      const fields = fieldErrors(error);
+      setErrors(fields);
+      setFormError(Object.keys(fields).length ? t("form.errors") : errorMessage(error, t));
+      if (error instanceof ApiError && error.code === "invalid_image") setPhotoError(error.message);
+      setSaving(false);
+      requestAnimationFrame(() => errorRef.current?.focus());
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
+      <p className="text-sm text-muted">{t("form.intro")}</p>
+      {formError && (
+        <div ref={errorRef} tabIndex={-1}>
+          <Alert tone="error">{formError}</Alert>
+        </div>
+      )}
+
+      {!editing && (
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium">{t("form.type")}</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(["lost", "found"] as const).map((type) => (
+              <label
+                key={type}
+                className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-4 has-[:checked]:border-primary has-[:checked]:bg-info-bg"
+              >
+                <input type="radio" name="type" value={type} checked={draft.type === type} onChange={set("type")} className="size-4" />
+                <span className="font-medium">{t(`form.type.${type}`)}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      <Field label={t("form.itemTitle")} hint={t("form.itemTitle.hint")} error={errors.title}>
+        {(props) => <Input {...props} value={draft.title} onChange={set("title")} required maxLength={120} autoComplete="off" />}
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t("form.category")} error={errors.category}>
+          {(props) => (
+            <Select {...props} value={draft.category} onChange={set("category")} required>
+              <option value="" disabled>
+                —
+              </option>
+              {CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {t(`category.${category}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={t("form.date")} error={errors.date}>
+          {(props) => <Input {...props} type="date" value={draft.date} max={todayIso()} onChange={set("date")} required />}
+        </Field>
+      </div>
+
+      <Field label={t("form.location")} hint={t("form.location.hint")} error={errors.location || errors.latitude}>
+        {(props) => <Input {...props} value={draft.location} onChange={set("location")} required maxLength={200} />}
+      </Field>
+      <div className="-mt-3 flex flex-wrap items-center gap-2">
+        {draft.latitude ? (
+          <>
+            <p className="text-sm text-found">{t("form.locationSaved")}</p>
+            <Button type="button" variant="ghost" onClick={() => setDraft((d) => ({ ...d, latitude: "", longitude: "" }))}>
+              {t("form.removeLocation")}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" variant="secondary" onClick={useMyLocation} loading={locating}>
+            <LocateFixed className="size-4" aria-hidden />
+            {t("form.useLocation")}
+          </Button>
+        )}
+      </div>
+
+      <Field label={t("form.description")} hint={t("form.description.hint")} error={errors.description} optional optionalLabel={t("common.optional")}>
+        {(props) => <Textarea {...props} value={draft.description} onChange={set("description")} maxLength={2000} rows={4} />}
+      </Field>
+
+      <Field label={t("form.question")} hint={t("form.question.hint")} error={errors.ownershipQuestion}>
+        {(props) => <Input {...props} value={draft.ownershipQuestion} onChange={set("ownershipQuestion")} maxLength={300} />}
+      </Field>
+
+      <fieldset>
+        <legend className="text-sm font-medium">{t("form.photos")}</legend>
+        <p className="mb-2 text-xs text-muted">{t("form.photos.hint", { max: MAX_PHOTOS, mb: MAX_MB })}</p>
+        <ul className="flex flex-wrap gap-3">
+          {existing.map((image, index) => (
+            <li key={image.id} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image.thumbUrl} alt="" className="size-24 rounded-lg object-cover" />
+              <button
+                type="button"
+                onClick={() => setRemoveIds((ids) => [...ids, image.id])}
+                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow"
+                aria-label={t("form.photos.remove", { n: index + 1 })}
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {previews.map((url, index) => (
+            <li key={url} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="" className="size-24 rounded-lg object-cover" />
+              <button
+                type="button"
+                onClick={() => setFiles((list) => list.filter((_, i) => i !== index))}
+                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow"
+                aria-label={t("form.photos.remove", { n: existing.length + index + 1 })}
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {existing.length + files.length < MAX_PHOTOS && (
+            <li>
+              <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border text-xs text-muted focus-within:ring-2 focus-within:ring-primary hover:bg-surface-muted">
+                <ImagePlus className="size-6" aria-hidden />
+                {t("form.photos.add")}
+                <input
+                  type="file"
+                  accept={ACCEPT.join(",")}
+                  multiple
+                  className="sr-only"
+                  data-testid="photo-input"
+                  onChange={(event) => {
+                    addFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </li>
+          )}
+        </ul>
+        {photoError && (
+          <Alert tone="error" className="mt-3">
+            {photoError}
+          </Alert>
+        )}
+      </fieldset>
+
+      <div className="flex gap-2">
+        <Button type="submit" loading={saving} className="w-full sm:w-auto">
+          {saving ? t("form.saving") : editing ? t("form.submit.edit") : t("form.submit.create")}
+        </Button>
+      </div>
+    </form>
+  );
+}
