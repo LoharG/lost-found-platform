@@ -19,7 +19,14 @@ function csrfProtection(config, { exempt = [] } = {}) {
   return (req, res, next) => {
     if (SAFE_METHODS.has(req.method) || exempt.some((prefix) => req.path.startsWith(prefix))) return next();
 
-    const origin = req.get("origin") || (req.get("referer") ? new URL(req.get("referer")).origin : null);
+    let origin = req.get("origin") || null;
+    if (!origin && req.get("referer")) {
+      try {
+        origin = new URL(req.get("referer")).origin;
+      } catch {
+        origin = "invalid";
+      }
+    }
     if (origin && !config.allowedOrigins.includes(origin)) {
       return next(new HttpError(403, "Request origin is not allowed", "csrf_origin"));
     }
