@@ -163,6 +163,8 @@ function DataControls() {
             setError(null);
             try {
               await api("/account", { method: "DELETE", json: { confirm } });
+              // Full reload on purpose: drops every piece of client state after sign-out/deletion.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
               window.location.assign("/");
             } catch (err) {
               setError(errorMessage(err, t));

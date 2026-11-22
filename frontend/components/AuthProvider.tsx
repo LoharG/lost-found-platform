@@ -67,6 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await api("/auth/logout", { method: "POST" }).catch(() => {});
     setUser(null);
     await refresh();
+    // Full reload on purpose: drops every piece of client state after sign-out/deletion.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/");
   }, [refresh]);
 

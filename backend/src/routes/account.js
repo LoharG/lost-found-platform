@@ -4,11 +4,10 @@
 //
 // Deletion (see docs/data-retention.md):
 // - the user's listings, their images (objects removed from storage), claims,
-//   conversations they took part in, notifications and identities are deleted
-// - messages they sent in conversations that survive are kept but detached
-//   (sender becomes "deleted user")
+//   every conversation they took part in (and its messages), notifications,
+//   sign-in identities and sessions are deleted
 // - abuse reports they filed and moderator audit rows are kept without the
-//   link to their account
+//   link to their account (reporter/moderator set to NULL)
 
 const express = require("express");
 const { z } = require("zod");

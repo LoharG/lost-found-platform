@@ -7,7 +7,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk upgrade --no-cache
+# Runtime needs only node: drop npm/corepack (and their bundled deps) from the image.
+RUN apk upgrade --no-cache && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json server.js ./
 COPY src ./src
