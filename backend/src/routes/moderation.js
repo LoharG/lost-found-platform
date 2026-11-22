@@ -12,7 +12,7 @@ const { imagePaths } = require("../services/images");
 const { ownerItem, displayName, timestamp } = require("../services/serializers");
 const { loadItem, parseId, imagesFor } = require("../services/items");
 
-function moderationRoutes({ pool, storage, notifier }) {
+function moderationRoutes({ pool, storage, notifier, connections }) {
   const router = express.Router();
   router.use("/moderation", requireModerator);
 
@@ -110,6 +110,7 @@ function moderationRoutes({ pool, storage, notifier }) {
       const item = await loadItem(db, id, { forUpdate: true });
       if (!item || item.deleted_at) throw new HttpError(404, "Listing not found", "item_not_found");
       if (item.moderation_state === "visible") return { changed: false, notifications: [] };
+      // Restores removed listings and approves listings held for review.
       await db.query("UPDATE items SET moderation_state = 'visible', updated_at = now() WHERE id = $1", [id]);
       const action = await db.query(
         "INSERT INTO moderation_actions (moderator_id, item_id, action, reason) VALUES ($1, $2, 'restore_listing', $3) RETURNING id",
@@ -122,6 +123,84 @@ function moderationRoutes({ pool, storage, notifier }) {
     });
     await notifier.deliver(result.notifications);
     res.json({ ok: true, changed: result.changed });
+  });
+
+  // Listings held because they looked like they contained contact details.
+  router.get("/moderation/pending", async (req, res) => {
+    const { rows } = await pool.query(
+      "SELECT i.*, u.name AS user_name FROM items i LEFT JOIN users u ON u.id = i.user_id WHERE i.moderation_state = 'pending' AND i.deleted_at IS NULL ORDER BY i.updated_at LIMIT 100"
+    );
+    const images = await imagesFor(pool, rows.map((r) => r.id));
+    res.set("Cache-Control", "private, no-store").json({ items: rows.map((row) => ownerItem(row, images.get(row.id) || [])) });
+  });
+
+  // Support: connection-fee refund requests and reward payment issues.
+  router.get("/moderation/support", async (req, res) => {
+    const status = z.enum(["open", "approved", "rejected", "resolved"]).default("open").parse(req.query.status || undefined);
+    const { rows } = await pool.query(
+      `SELECT s.*, r.name AS requester_name, c.item_id, c.reward_paise, c.reward_status, c.return_confirmed_at,
+              p.status AS payment_status, p.paid_at, p.amount_paise, i.name AS item_name,
+              (SELECT count(*)::int FROM messages m JOIN conversations cv ON cv.id = m.conversation_id
+                 WHERE cv.item_id = c.item_id AND cv.participant_id = c.claimant_id AND m.sender_id = c.finder_id) AS finder_messages
+       FROM support_requests s
+       LEFT JOIN users r ON r.id = s.requester_id
+       LEFT JOIN claims c ON c.id = s.claim_id
+       LEFT JOIN items i ON i.id = c.item_id
+       LEFT JOIN connection_payments p ON p.id = s.payment_id
+       WHERE s.status = $1 ORDER BY s.created_at LIMIT 200`,
+      [status]
+    );
+    res.set("Cache-Control", "private, no-store").json({
+      requests: rows.map((row) => ({
+        id: Number(row.id),
+        kind: row.kind,
+        status: row.status,
+        message: row.message,
+        requester: displayName(row.requester_name),
+        claimId: row.claim_id ? Number(row.claim_id) : null,
+        itemId: row.item_id,
+        itemTitle: row.item_name,
+        rewardPaise: row.reward_paise,
+        rewardStatus: row.reward_status,
+        returnConfirmed: Boolean(row.return_confirmed_at),
+        payment: row.payment_status ? { status: row.payment_status, amountPaise: row.amount_paise, paidAt: timestamp(row.paid_at) } : null,
+        finderMessages: row.finder_messages ?? 0,
+        resolution: row.resolution,
+        createdAt: timestamp(row.created_at),
+      })),
+    });
+  });
+
+  router.post("/moderation/support/:id/resolve", async (req, res) => {
+    const id = parseId(req.params.id, "Request ID");
+    const { action, note } = z
+      .object({ action: z.enum(["approve_refund", "reject", "resolve"]), note: z.string().trim().min(3, "Add a short note").max(500) })
+      .strict()
+      .parse(req.body || {});
+    const { rows } = await pool.query("SELECT * FROM support_requests WHERE id = $1", [id]);
+    const request = rows[0];
+    if (!request) throw new HttpError(404, "Request not found", "request_not_found");
+    if (request.status !== "open") return res.json({ ok: true, changed: false, status: request.status });
+    if (action === "approve_refund" && request.kind !== "refund") throw new HttpError(400, "Only refund requests can be refunded", "not_refund");
+
+    let refundResult = null;
+    if (action === "approve_refund") refundResult = await connections.refundPayment(request.payment_id);
+    const status = action === "approve_refund" ? "approved" : action === "reject" ? "rejected" : "resolved";
+    const updated = await pool.query(
+      "UPDATE support_requests SET status = $2, resolution = $3, resolved_by = $4, resolved_at = now() WHERE id = $1 AND status = 'open' RETURNING requester_id, claim_id",
+      [id, status, note, req.user.id]
+    );
+    if (updated.rows[0]?.requester_id) {
+      const created = await notifier.notify(pool, {
+        userId: updated.rows[0].requester_id,
+        type: "support_update",
+        itemId: null,
+        data: { requestId: id, kind: request.kind, status },
+        dedupeKey: `support:${id}:${status}`,
+      });
+      await notifier.deliver([created]);
+    }
+    res.json({ ok: true, changed: true, status, refund: refundResult });
   });
 
   router.post("/moderation/reports/:id/dismiss", async (req, res) => {

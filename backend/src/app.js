@@ -26,12 +26,17 @@ const { moderationRoutes } = require("./routes/moderation");
 const { accountRoutes } = require("./routes/account");
 const { mediaRoutes } = require("./routes/media");
 const { analyticsRoutes } = require("./routes/analytics");
+const { paymentRoutes, paymentWebhookRoutes } = require("./routes/payments");
+const { createPaymentProvider } = require("./services/payments");
+const { createConnectionService } = require("./services/connections");
+const { publicPricing } = require("./services/pricing");
 
 const REQUEST_ID = /^[A-Za-z0-9._-]{8,128}$/;
 
 function createApp({ config, pool, logger, storage = createStorage(config.storage, logger), mailer = createMailer(config, logger) }) {
   const app = express();
   app.disable("x-powered-by");
+  app.locals.pool = pool;
   app.set("trust proxy", config.trustProxy);
 
   // --- Request IDs + structured access logs (no bodies, redacted headers) ---
@@ -135,18 +140,23 @@ function createApp({ config, pool, logger, storage = createStorage(config.storag
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Payment provider + paid-connection service. The webhook is mounted before
+  // the JSON parser because signature validation needs the raw body bytes.
+  const provider = createPaymentProvider(config, pool);
+  const notifier = createNotifier({ pool, mailer, config, logger });
+  const connections = createConnectionService({ pool, provider, notifier, logger });
+  app.use("/api", paymentWebhookRoutes({ connections, provider }));
+
   app.use(express.json({ limit: "64kb" }));
 
   const limits = createRateLimiters(pool, config);
   app.use("/api", limits.general);
   // Apple's form_post callback is a cross-site POST and is protected by the
   // OAuth state parameter instead.
-  app.use("/api", csrfProtection(config, { exempt: ["/auth/apple/callback"] }));
+  app.use("/api", csrfProtection(config, { exempt: ["/auth/apple/callback", "/payments/webhook"] }));
 
-  const mailerInstance = mailer;
-  const notifier = createNotifier({ pool, mailer: mailerInstance, config, logger });
-  const otp = createOtpService({ pool, mailer: mailerInstance, config });
-  const deps = { pool, config, storage, notifier, limits, logger, passport, otp };
+  const otp = createOtpService({ pool, mailer, config });
+  const deps = { pool, config, storage, notifier, limits, logger, passport, otp, connections, provider };
 
   app.get("/", (req, res) => res.json({ service: "lost-found-api" }));
   app.use("/api/auth", authRoutes(deps));
@@ -158,6 +168,8 @@ function createApp({ config, pool, logger, storage = createStorage(config.storag
   app.use("/api", accountRoutes(deps));
   app.use("/api", mediaRoutes(deps));
   app.use("/api", analyticsRoutes(deps));
+  app.use("/api", paymentRoutes(deps));
+  app.get("/api/pricing", (req, res) => res.set("Cache-Control", "public, max-age=300").json(publicPricing()));
   app.use(mediaRoutes(deps)); // also blocks legacy /uploads/* at the root
 
   app.use(notFound);
