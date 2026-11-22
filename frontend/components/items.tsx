@@ -1,0 +1,100 @@
+import Link from "next/link";
+import { Calendar, ImageOff, MapPin } from "lucide-react";
+import { Badge } from "./ui";
+import { formatDate } from "@/lib/format";
+import type { Locale, MessageKey } from "@/lib/i18n/messages";
+import type { Item, ItemStatus, ItemType } from "@/lib/types";
+
+type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
+export function TypeBadge({ type, t }: { type: ItemType; t: T }) {
+  return <Badge tone={type === "lost" ? "lost" : "found"}>{t(`type.${type}`)}</Badge>;
+}
+
+export function StatusBadge({ status, t }: { status: ItemStatus; t: T }) {
+  if (status === "open") return null;
+  return <Badge tone={status === "returned" ? "success" : status === "claimed" ? "warn" : "neutral"}>{t(`status.${status}`)}</Badge>;
+}
+
+export function ItemCard({ item, t, locale, headingLevel = 2 }: { item: Item; t: T; locale: Locale; headingLevel?: 2 | 3 }) {
+  const Heading = `h${headingLevel}` as "h2" | "h3";
+  const image = item.images[0];
+  return (
+    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-shadow focus-within:ring-2 focus-within:ring-primary hover:shadow-md">
+      <div className="aspect-[4/3] bg-surface-muted">
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={image.thumbUrl} alt="" loading="lazy" decoding="async" width={480} height={360} className="size-full object-cover" />
+        ) : (
+          <div className="flex size-full items-center justify-center text-muted">
+            <ImageOff className="size-8" aria-hidden />
+            <span className="sr-only">{t("item.noPhotos")}</span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <div className="flex flex-wrap gap-1.5">
+          <TypeBadge type={item.type} t={t} />
+          <StatusBadge status={item.status} t={t} />
+          <Badge>{t(`category.${item.category}`)}</Badge>
+        </div>
+        <Heading className="text-base font-semibold leading-snug">
+          <Link href={`/items/${item.id}`} className="after:absolute after:inset-0 focus:outline-none">
+            {item.title}
+          </Link>
+        </Heading>
+        <p className="flex items-center gap-1.5 text-sm text-muted">
+          <MapPin className="size-4 shrink-0" aria-hidden />
+          <span className="truncate">{item.location}</span>
+          {item.distanceKm !== undefined && <span className="shrink-0">· {t("item.distance", { km: item.distanceKm })}</span>}
+        </p>
+        <p className="flex items-center gap-1.5 text-sm text-muted">
+          <Calendar className="size-4 shrink-0" aria-hidden />
+          <span>
+            {t(item.type === "lost" ? "item.date.lost" : "item.date.found")} {formatDate(item.date, locale)}
+          </span>
+        </p>
+      </div>
+    </article>
+  );
+}
+
+export function ItemGrid({ items, t, locale, headingLevel }: { items: Item[]; t: T; locale: Locale; headingLevel?: 2 | 3 }) {
+  return (
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => (
+        <li key={item.id} className="flex">
+          <div className="w-full">
+            <ItemCard item={item} t={t} locale={locale} headingLevel={headingLevel} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function Pagination({ page, totalPages, hrefFor, t }: { page: number; totalPages: number; hrefFor: (page: number) => string; t: T }) {
+  if (totalPages <= 1) return null;
+  const linkClass = "inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:bg-surface-muted";
+  return (
+    <nav aria-label={t("pagination.label")} className="mt-8 flex items-center justify-between gap-3">
+      {page > 1 ? (
+        <Link href={hrefFor(page - 1)} className={linkClass} rel="prev">
+          {t("pagination.prev")}
+        </Link>
+      ) : (
+        <span />
+      )}
+      <p className="text-sm text-muted" aria-current="page">
+        {t("pagination.page", { page, total: totalPages })}
+      </p>
+      {page < totalPages ? (
+        <Link href={hrefFor(page + 1)} className={linkClass} rel="next">
+          {t("pagination.next")}
+        </Link>
+      ) : (
+        <span />
+      )}
+    </nav>
+  );
+}
