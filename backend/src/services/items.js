@@ -184,26 +184,23 @@ function itemInputSchema({ partial }) {
     type: z.enum(TYPES),
     title: z.string().trim().min(2, "Title is too short").max(120),
     category: z.enum(CATEGORIES),
-    description: z.string().trim().max(2000).optional().default(""),
+    description: z.string().trim().max(2000),
     location: z.string().trim().min(2, "Location is too short").max(200),
     date: dateString.refine((value) => value <= today(), "Date cannot be in the future"),
     latitude: optionalNumber(-90, 90),
     longitude: optionalNumber(-180, 180),
-    ownershipQuestion: z.string().trim().max(300).optional().default(""),
-    removeImageIds: z
-      .preprocess(
-        (value) => (Array.isArray(value) ? value : String(value || "").split(",").filter(Boolean)),
-        z.array(z.coerce.number().int().positive()).max(20)
-      )
-      .optional()
-      .default([]),
+    ownershipQuestion: z.string().trim().max(300),
+    removeImageIds: z.preprocess(
+      (value) => (Array.isArray(value) ? value : String(value || "").split(",").filter(Boolean)),
+      z.array(z.coerce.number().int().positive()).max(20)
+    ),
   };
-  let schema = z.object(shape).strict();
-  if (partial) {
-    schema = z
-      .object(Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, key === "removeImageIds" ? value : value.optional()])))
-      .strict();
-  }
+  const optionalKeys = partial
+    ? Object.keys(shape)
+    : ["description", "latitude", "longitude", "ownershipQuestion", "removeImageIds"];
+  const schema = z
+    .object(Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, optionalKeys.includes(key) ? value.optional() : value])))
+    .strict();
   return schema.refine(
     (v) => (v.latitude === undefined) === (v.longitude === undefined),
     { message: "Latitude and longitude must be provided together", path: ["latitude"] }
