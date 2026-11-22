@@ -1,6 +1,10 @@
 "use strict";
 
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
+
+// DATE columns are calendar dates with no timezone; keep them as YYYY-MM-DD
+// strings instead of letting node-postgres shift them into local midnight.
+types.setTypeParser(1082, (value) => value);
 
 function createPool(config, logger) {
   const pool = new Pool(config.database);
