@@ -13,6 +13,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locale TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+-- Prototype timestamps were written by CURRENT_TIMESTAMP in the server's
+-- TimeZone without zone info; convert them to unambiguous timestamptz.
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'created_at') = 'timestamp without time zone' THEN
+    ALTER TABLE users ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE current_setting('TimeZone');
+  END IF;
+END $$;
+ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS allow_phone_contact BOOLEAN DEFAULT FALSE;
@@ -62,6 +70,12 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ;
 
 UPDATE items SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'created_at') = 'timestamp without time zone' THEN
+    ALTER TABLE items ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE current_setting('TimeZone');
+  END IF;
+END $$;
+ALTER TABLE items ALTER COLUMN created_at SET DEFAULT now();
 ALTER TABLE items ALTER COLUMN created_at SET NOT NULL;
 
 DO $$ BEGIN

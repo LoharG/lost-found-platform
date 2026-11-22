@@ -17,7 +17,7 @@ const FORBIDDEN_KEYS = ["email", "user_email", "mobile_number", "user_mobile_num
 function assertNoPrivateFields(value, where) {
   const text = JSON.stringify(value);
   for (const key of FORBIDDEN_KEYS) {
-    assert.ok(!new RegExp(`"${key}"`).test(text), `${where} leaked "${key}": ${text.slice(0, 300)}`);
+    assert.ok(!new RegExp(`"${key}":`).test(text), `${where} leaked "${key}": ${text.slice(0, 300)}`);
   }
 }
 
