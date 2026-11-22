@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, LocateFixed, X } from "lucide-react";
+import { Check, ImagePlus, LocateFixed, PackageCheck, PackageSearch, X } from "lucide-react";
+import { flashToast } from "./Toaster";
 import { errorMessage } from "./AuthProvider";
 import { Alert, Button, Field, Input, Select, Textarea } from "./ui";
 import { api, ApiError, fieldErrors } from "@/lib/api";
@@ -109,6 +110,7 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
 
     try {
       const res = await api<{ item: Item }>(editing ? `/items/${item!.id}` : "/items", { method: editing ? "PATCH" : "POST", form });
+      flashToast(editing ? t("toast.saved") : t("toast.published"));
       router.push(`/items/${res.item.id}`);
       router.refresh();
     } catch (error) {
@@ -134,15 +136,24 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
         <fieldset>
           <legend className="mb-2 text-sm font-medium">{t("form.type")}</legend>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(["lost", "found"] as const).map((type) => (
-              <label
-                key={type}
-                className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-4 has-[:checked]:border-primary has-[:checked]:bg-info-bg"
-              >
-                <input type="radio" name="type" value={type} checked={draft.type === type} onChange={set("type")} className="size-4" />
-                <span className="font-medium">{t(`form.type.${type}`)}</span>
-              </label>
-            ))}
+            {(["lost", "found"] as const).map((type) => {
+              const Icon = type === "lost" ? PackageSearch : PackageCheck;
+              return (
+                <label
+                  key={type}
+                  className="group relative flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border-2 border-border bg-surface px-4 py-3 transition-[border-color,background-color,transform] duration-150 hover:border-primary/60 active:scale-[0.99] has-[:checked]:border-primary has-[:checked]:bg-info-bg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary"
+                >
+                  <input type="radio" name="type" value={type} checked={draft.type === type} onChange={set("type")} className="peer sr-only" />
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-muted transition-colors peer-checked:bg-primary peer-checked:text-primary-contrast">
+                    <Icon className="size-5" aria-hidden />
+                  </span>
+                  <span className="font-semibold">{t(`form.type.${type}`)}</span>
+                  <span className="absolute right-3 top-3 flex size-6 scale-50 items-center justify-center rounded-full bg-primary text-primary-contrast opacity-0 transition-[opacity,transform] duration-150 peer-checked:scale-100 peer-checked:opacity-100">
+                    <Check className="size-4" aria-hidden />
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </fieldset>
       )}
@@ -205,11 +216,11 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           {existing.map((image, index) => (
             <li key={image.id} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={image.thumbUrl} alt="" className="size-24 rounded-lg object-cover" />
+              <img src={image.thumbUrl} alt="" className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90" />
               <button
                 type="button"
                 onClick={() => setRemoveIds((ids) => [...ids, image.id])}
-                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow"
+                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow transition-colors hover:border-lost hover:text-lost"
                 aria-label={t("form.photos.remove", { n: index + 1 })}
               >
                 <X className="size-4" aria-hidden />
@@ -219,11 +230,11 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           {previews.map((url, index) => (
             <li key={url} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" className="size-24 rounded-lg object-cover" />
+              <img src={url} alt="" className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90" />
               <button
                 type="button"
                 onClick={() => setFiles((list) => list.filter((_, i) => i !== index))}
-                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow"
+                className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow transition-colors hover:border-lost hover:text-lost"
                 aria-label={t("form.photos.remove", { n: existing.length + index + 1 })}
               >
                 <X className="size-4" aria-hidden />

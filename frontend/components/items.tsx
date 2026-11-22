@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Calendar, ImageOff, MapPin } from "lucide-react";
 import { Badge } from "./ui";
+import { ViewedBadge } from "./ViewedBadge";
 import { formatDate } from "@/lib/format";
 import type { Locale, MessageKey } from "@/lib/i18n/messages";
 import type { Item, ItemStatus, ItemType } from "@/lib/types";
@@ -20,11 +21,12 @@ export function ItemCard({ item, t, locale, headingLevel = 2 }: { item: Item; t:
   const Heading = `h${headingLevel}` as "h2" | "h3";
   const image = item.images[0];
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-shadow focus-within:ring-2 focus-within:ring-primary hover:shadow-md">
-      <div className="aspect-[4/3] bg-surface-muted">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm transition-[transform,box-shadow,border-color] duration-200 ease-out hover:-translate-y-1 hover:border-primary/60 hover:shadow-lg focus-within:-translate-y-1 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary active:translate-y-0 active:scale-[0.98] motion-reduce:hover:translate-y-0 motion-reduce:focus-within:translate-y-0">
+      <div className="relative aspect-[4/3] overflow-hidden bg-surface-muted">
+        <ViewedBadge id={item.id} />
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={image.thumbUrl} alt="" loading="lazy" decoding="async" width={480} height={360} className="size-full object-cover" />
+          <img src={image.thumbUrl} alt="" loading="lazy" decoding="async" width={480} height={360} className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 motion-reduce:group-hover:scale-100" />
         ) : (
           <div className="flex size-full items-center justify-center text-muted">
             <ImageOff className="size-8" aria-hidden />
@@ -39,7 +41,7 @@ export function ItemCard({ item, t, locale, headingLevel = 2 }: { item: Item; t:
           <Badge>{t(`category.${item.category}`)}</Badge>
         </div>
         <Heading className="text-base font-semibold leading-snug">
-          <Link href={`/items/${item.id}`} className="after:absolute after:inset-0 focus:outline-none">
+          <Link href={`/items/${item.id}`} className="transition-colors after:absolute after:inset-0 group-hover:text-primary focus:outline-none">
             {item.title}
           </Link>
         </Heading>

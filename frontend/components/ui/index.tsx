@@ -5,24 +5,28 @@ import { AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 min-h-11";
+  "group/btn inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-[color,background-color,border-color,transform,box-shadow] duration-150 active:translate-y-px active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:translate-y-0 disabled:active:scale-100 min-h-11";
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-contrast hover:bg-primary-hover",
-  secondary: "border border-border bg-surface text-text hover:bg-surface-muted",
+  primary: "bg-primary text-primary-contrast shadow-sm hover:bg-primary-hover hover:shadow-md",
+  secondary: "border border-border bg-surface text-text hover:border-primary/60 hover:bg-surface-muted",
   ghost: "text-text hover:bg-surface-muted",
   danger: "bg-lost text-white hover:opacity-90 dark:text-black",
 };
 
 export const Button = forwardRef<
   HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; loading?: boolean }
->(function Button({ variant = "primary", loading, className, children, disabled, ...props }, ref) {
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; loading?: boolean; disabledReason?: string }
+>(function Button({ variant = "primary", loading, className, children, disabled, disabledReason, title, ...props }, ref) {
+  // A disabled button explains itself on hover (title) and to screen readers.
+  const reason = disabled && !loading ? disabledReason : undefined;
   return (
     <button
       ref={ref}
       className={clsx(buttonBase, buttonVariants[variant], className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      title={reason ?? title}
+      aria-description={reason}
       {...props}
     >
       {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}

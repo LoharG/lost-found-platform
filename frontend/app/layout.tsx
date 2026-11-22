@@ -6,6 +6,7 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { Header } from "@/components/Header";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import { ThemeProvider } from "@/components/ThemeToggle";
+import { ToastProvider } from "@/components/Toaster";
 import { getTheme } from "@/lib/theme";
 import { I18nProvider } from "@/lib/i18n/client";
 import { getT } from "@/lib/i18n/server";
@@ -44,6 +45,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <I18nProvider locale={locale}>
           <ThemeProvider initial={theme}>
           <AuthProvider>
+          <ToastProvider>
             <PageViewTracker />
             <Header />
             <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">
@@ -62,6 +64,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </nav>
               </div>
             </footer>
+          </ToastProvider>
           </AuthProvider>
           </ThemeProvider>
         </I18nProvider>
