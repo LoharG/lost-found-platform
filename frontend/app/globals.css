@@ -86,6 +86,17 @@ body {
   outline-offset: 2px;
 }
 
+/* Hero sign: a gentle swing from the nail. */
+.hero-sign-swing {
+  transform-box: view-box;
+  transform-origin: 160px 26px;
+  animation: hero-sign-swing 6s ease-in-out infinite;
+}
+@keyframes hero-sign-swing {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

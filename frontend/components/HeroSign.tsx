@@ -5,13 +5,13 @@ export function HeroSign({ lines }: { lines: string[] }) {
   const lineHeight = 46;
   const startY = 196 - ((lines.length - 1) * lineHeight) / 2;
   return (
-    <svg viewBox="0 0 320 300" className="hero-sign h-auto w-full max-w-[320px]" aria-hidden="true" focusable="false">
+    <svg viewBox="-10 0 340 320" overflow="visible" className="hero-sign h-auto w-full max-w-[320px]" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="sign-face" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#f26a3d" />
           <stop offset="1" stopColor="#e2552a" />
         </linearGradient>
-        <filter id="sign-shadow" x="-20%" y="-20%" width="140%" height="160%">
+        <filter id="sign-shadow" x="-40%" y="-40%" width="180%" height="200%">
           <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000" floodOpacity="0.28" />
         </filter>
       </defs>

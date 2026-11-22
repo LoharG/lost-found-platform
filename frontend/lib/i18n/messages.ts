@@ -55,6 +55,7 @@ const en = {
   "footer.note": "Never share passwords or payment details. We will never ask for them.",
 
   "home.title": "Lost something? Found something?",
+  "home.sign": "LOST|& FOUND",
   "home.searchLabel": "Search listings",
   "home.searchPlaceholder": "e.g. black wallet, Pune station",
   "home.search": "Search",
@@ -384,6 +385,7 @@ const hi: Messages = {
   "footer.note": "पासवर्ड या भुगतान की जानकारी कभी साझा न करें। हम इन्हें कभी नहीं माँगेंगे।",
 
   "home.title": "कुछ खो गया? कुछ मिला?",
+  "home.sign": "खोया|पाया",
   "home.searchLabel": "सूचियाँ खोजें",
   "home.searchPlaceholder": "जैसे काला बटुआ, पुणे स्टेशन",
   "home.search": "खोजें",
