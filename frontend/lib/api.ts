@@ -7,11 +7,13 @@ export class ApiError extends Error {
   status: number;
   code: string;
   fields: { path: string; message: string }[];
-  constructor(status: number, code: string, message: string, fields: { path: string; message: string }[] = []) {
+  details: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, fields: { path: string; message: string }[] = [], details: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
     this.code = code;
     this.fields = fields;
+    this.details = details;
   }
 }
 
@@ -45,7 +47,7 @@ export async function api<T = unknown>(path: string, { method = "GET", json, for
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const err = data?.error || {};
-    throw new ApiError(response.status, err.code || "error", err.message || "error", err.fields || []);
+    throw new ApiError(response.status, err.code || "error", err.message || "error", err.fields || [], err.details || {});
   }
   return data as T;
 }

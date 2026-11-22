@@ -7,6 +7,8 @@ import { flashToast } from "./Toaster";
 import { errorMessage } from "./AuthProvider";
 import { Alert, Button, Field, Input, Select, Textarea } from "./ui";
 import { api, ApiError, fieldErrors } from "@/lib/api";
+import { inr } from "@/lib/money";
+import { rewardOf, usePricing } from "@/lib/pricing";
 import { todayIso } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { CATEGORIES, type Item, type ItemType } from "@/lib/types";
@@ -28,7 +30,7 @@ type Draft = {
 };
 
 export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultType?: ItemType }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const editing = Boolean(item);
   const [draft, setDraft] = useState<Draft>({
@@ -50,13 +52,30 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
+  const pricing = usePricing();
+  const [rewardAck, setRewardAck] = useState(false);
+  const [ackNotice, setAckNotice] = useState<string | null>(null);
+  const [needsReview, setNeedsReview] = useState(false);
+  const [reviewRequested, setReviewRequested] = useState(false);
+  const rewardPaise = rewardOf(pricing, draft.category);
+  const feePaise = pricing?.connectionFeePaise ?? 10000;
+  // Lost-item owners agree to the reward when publishing, and again if the
+  // category of an existing lost listing changes.
+  const needsAck = draft.type === "lost" && (!editing || draft.category !== item?.category);
 
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
   useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
 
   const existing = (item?.images ?? []).filter((image) => !removeIds.includes(image.id));
-  const set = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const value = event.target.value;
+    if ((key === "category" || key === "type") && rewardAck) {
+      setRewardAck(false);
+      const next = key === "category" ? rewardOf(pricing, value) : rewardPaise;
+      if (next) setAckNotice(t("reward.lost.ackReset", { amount: inr(next, locale) }));
+    }
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
 
   function addFiles(list: FileList | null) {
     setPhotoError(null);
@@ -95,9 +114,15 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    setSaving(true);
     setErrors({});
     setFormError(null);
+    if (needsAck && !rewardAck) {
+      setErrors({ acceptRewardTerms: t("reward.lost.ackRequired") });
+      setFormError(t("form.errors"));
+      requestAnimationFrame(() => errorRef.current?.focus());
+      return;
+    }
+    setSaving(true);
 
     const form = new FormData();
     for (const [key, value] of Object.entries(draft)) {
@@ -106,15 +131,29 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
       form.append(key, value);
     }
     if (removeIds.length) form.append("removeImageIds", removeIds.join(","));
+    if (needsAck && rewardPaise) {
+      form.append("acceptRewardTerms", "true");
+      form.append("expectedRewardPaise", String(rewardPaise));
+    }
+    if (reviewRequested) form.append("reviewRequested", "true");
     for (const file of files) form.append("images", file);
 
     try {
       const res = await api<{ item: Item }>(editing ? `/items/${item!.id}` : "/items", { method: editing ? "PATCH" : "POST", form });
-      flashToast(editing ? t("toast.saved") : t("toast.published"));
+      flashToast(reviewRequested ? t("toast.sentForReview") : editing ? t("toast.saved") : t("toast.published"));
       router.push(`/items/${res.item.id}`);
       router.refresh();
     } catch (error) {
       const fields = fieldErrors(error);
+      if (error instanceof ApiError && error.code === "contact_detected") {
+        const flagged = (error.details.fields || {}) as Record<string, string[]>;
+        for (const key of Object.keys(flagged)) fields[key] = t("form.contactDetected");
+        setNeedsReview(true);
+      }
+      if (error instanceof ApiError && (error.code === "pricing_changed" || error.code === "terms_required")) {
+        setRewardAck(false);
+        fields.acceptRewardTerms = error.message;
+      }
       setErrors(fields);
       setFormError(Object.keys(fields).length ? t("form.errors") : errorMessage(error, t));
       if (error instanceof ApiError && error.code === "invalid_image") setPhotoError(error.message);
@@ -181,6 +220,70 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           {(props) => <Input {...props} type="date" value={draft.date} max={todayIso()} onChange={set("date")} required />}
         </Field>
       </div>
+
+      <section aria-labelledby="reward-panel-title" aria-live="polite" className="rounded-xl border border-found/40 bg-found-bg/40 p-4">
+        <h2 id="reward-panel-title" className="text-sm font-semibold">
+          {t("reward.panelTitle")}
+        </h2>
+        {!rewardPaise ? (
+          <p className="mt-2 text-sm text-muted">{t("reward.selectCategory")}</p>
+        ) : draft.type === "lost" ? (
+          <>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="text-sm text-muted">{t("reward.finderReward")}</dt>
+                <dd data-testid="form-reward" className="text-xl font-bold">
+                  {inr(rewardPaise, locale)}
+                </dd>
+                <dd className="text-xs text-muted">{t("reward.lost.rewardBody", { amount: inr(rewardPaise, locale) })}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted">{t("reward.connectionFee")}</dt>
+                <dd className="text-xl font-bold">{inr(feePaise, locale)}</dd>
+                <dd className="text-xs text-muted">{t("reward.lost.feeBody", { fee: inr(feePaise, locale) })}</dd>
+              </div>
+            </dl>
+            <p className="mt-2 text-xs font-medium text-found">{t("reward.postingFree")}</p>
+            {needsAck && (
+              <div className="mt-3">
+                {ackNotice && !rewardAck && <p className="mb-2 text-sm text-warn">{ackNotice}</p>}
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-5 shrink-0"
+                    checked={rewardAck}
+                    onChange={(e) => {
+                      setRewardAck(e.target.checked);
+                      setAckNotice(null);
+                    }}
+                    aria-invalid={errors.acceptRewardTerms ? true : undefined}
+                    aria-describedby={errors.acceptRewardTerms ? "ack-error" : undefined}
+                    required
+                  />
+                  <span className="text-sm">{t("reward.lost.ack", { amount: inr(rewardPaise, locale), fee: inr(feePaise, locale) })}</span>
+                </label>
+                {errors.acceptRewardTerms && (
+                  <p id="ack-error" className="mt-1 text-sm text-lost">
+                    {errors.acceptRewardTerms}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <dl className="mt-3">
+              <dt className="text-sm text-muted">{t("reward.categoryReward")}</dt>
+              <dd data-testid="form-reward" className="text-xl font-bold">
+                {inr(rewardPaise, locale)}
+              </dd>
+              <dd className="text-xs text-muted">{t("reward.found.rewardBody", { amount: inr(rewardPaise, locale) })}</dd>
+            </dl>
+            <p className="mt-2 text-xs">{t("reward.found.feeBody", { fee: inr(feePaise, locale) })}</p>
+            <p className="mt-1 text-xs text-muted">{t("reward.found.dependsNote")}</p>
+          </>
+        )}
+      </section>
 
       <Field label={t("form.location")} hint={t("form.location.hint")} error={errors.location || errors.latitude}>
         {(props) => <Input {...props} value={draft.location} onChange={set("location")} required maxLength={200} />}
@@ -267,6 +370,13 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           </Alert>
         )}
       </fieldset>
+
+      {needsReview && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-warn/40 bg-warn-bg p-3">
+          <input type="checkbox" className="mt-1 size-5 shrink-0" checked={reviewRequested} onChange={(e) => setReviewRequested(e.target.checked)} />
+          <span className="text-sm">{t("form.requestReview")}</span>
+        </label>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" loading={saving} className="w-full sm:w-auto">

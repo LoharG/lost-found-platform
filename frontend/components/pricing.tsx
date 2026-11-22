@@ -34,8 +34,8 @@ export function RewardPanel({ rewardPaise, feePaise, t, locale }: { rewardPaise:
             {t("reward.finderReward")}
           </dt>
           <dd className="mt-1 text-sm">
-            <span className="text-lg font-bold">{inr(rewardPaise, locale)}</span>{" "}
-            <span className="text-muted">{t("reward.detail.rewardBody", { amount: "" }).replace(/^\s+/, "")}</span>
+            <span className="block text-lg font-bold">{inr(rewardPaise, locale)}</span>
+            <span className="text-muted">{t("reward.detail.rewardBody", { amount: inr(rewardPaise, locale) })}</span>
           </dd>
         </div>
         <div>
@@ -44,8 +44,8 @@ export function RewardPanel({ rewardPaise, feePaise, t, locale }: { rewardPaise:
             {t("reward.connectionFeeShort")}
           </dt>
           <dd className="mt-1 text-sm">
-            <span className="text-lg font-bold">{inr(feePaise, locale)}</span>{" "}
-            <span className="text-muted">{t("reward.detail.feeBody", { fee: "" }).replace(/^\s+/, "")}</span>
+            <span className="block text-lg font-bold">{inr(feePaise, locale)}</span>
+            <span className="text-muted">{t("reward.detail.feeBody", { fee: inr(feePaise, locale) })}</span>
           </dd>
         </div>
       </dl>
