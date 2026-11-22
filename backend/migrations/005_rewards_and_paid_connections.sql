@@ -69,7 +69,8 @@ ALTER TABLE claims ADD COLUMN IF NOT EXISTS reward_issue_note TEXT CHECK (reward
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS connection_payments (
     id                   BIGSERIAL PRIMARY KEY,
-    claim_id             BIGINT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    -- Kept (claim link nulled) if a match/account is deleted: payment records are retained for accounting.
+    claim_id             BIGINT REFERENCES claims(id) ON DELETE SET NULL,
     owner_id             INTEGER REFERENCES users(id) ON DELETE SET NULL,
     provider             TEXT NOT NULL CHECK (provider IN ('razorpay', 'test')),
     provider_order_id    TEXT NOT NULL UNIQUE,

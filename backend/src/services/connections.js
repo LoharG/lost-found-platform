@@ -141,7 +141,10 @@ function createConnectionService({ pool, provider, notifier, logger }) {
     const conversationId = conv.rows[0].id;
     const inserted = await db.query(
       `INSERT INTO connection_entitlements (claim_id, conversation_id, payment_id) VALUES ($1, $2, $3)
-       ON CONFLICT (claim_id) DO NOTHING RETURNING id`,
+       ON CONFLICT (claim_id) DO UPDATE SET payment_id = EXCLUDED.payment_id, conversation_id = EXCLUDED.conversation_id,
+         granted_at = now(), revoked_at = NULL, revoke_reason = NULL
+       WHERE connection_entitlements.revoked_at IS NOT NULL
+       RETURNING id`,
       [claim.id, conversationId, payment.id]
     );
     if (!inserted.rowCount) return [];
