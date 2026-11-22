@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Tailwind dark: variant follows the explicit theme, not the OS setting. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /* Design tokens. Components use these via Tailwind's theme variables, so the
    palette and dark mode live in one place. */
 :root {
@@ -24,28 +27,27 @@
   --grid: #e8ebef;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117;
-    --surface: #151b23;
-    --surface-muted: #1c232d;
-    --border: #2d3641;
-    --text: #e8edf2;
-    --text-muted: #9aa5b1;
-    --primary: #6b9bff;
-    --primary-hover: #8fb2ff;
-    --primary-contrast: #0b1220;
-    --lost: #ff8a80;
-    --lost-bg: #2a1614;
-    --found: #6ee7a8;
-    --found-bg: #102419;
-    --warn: #fdb022;
-    --warn-bg: #2a2010;
-    --info-bg: #142036;
-    --focus: #8fb2ff;
-    --chart-1: #5b8cf5;
-    --grid: #232b35;
-  }
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-muted: #1c232d;
+  --border: #2d3641;
+  --text: #e8edf2;
+  --text-muted: #9aa5b1;
+  --primary: #6b9bff;
+  --primary-hover: #8fb2ff;
+  --primary-contrast: #0b1220;
+  --lost: #ff8a80;
+  --lost-bg: #2a1614;
+  --found: #6ee7a8;
+  --found-bg: #102419;
+  --warn: #fdb022;
+  --warn-bg: #2a2010;
+  --info-bg: #142036;
+  --focus: #8fb2ff;
+  --chart-1: #5b8cf5;
+  --grid: #232b35;
 }
 
 @theme inline {
@@ -71,7 +73,7 @@
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 body {

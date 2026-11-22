@@ -5,6 +5,8 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { Header } from "@/components/Header";
 import { PageViewTracker } from "@/components/PageViewTracker";
+import { ThemeProvider } from "@/components/ThemeToggle";
+import { getTheme } from "@/lib/theme";
 import { I18nProvider } from "@/lib/i18n/client";
 import { getT } from "@/lib/i18n/server";
 
@@ -24,16 +26,14 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#151b23" },
-  ],
+  themeColor: "#151b23",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { locale, t } = await getT();
+  const theme = await getTheme();
   return (
-    <html lang={locale} className={`${geistSans.variable} h-full antialiased`}>
+    <html lang={locale} data-theme={theme} className={`${geistSans.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
         <a
           href="#main"
@@ -42,6 +42,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           {t("nav.skip")}
         </a>
         <I18nProvider locale={locale}>
+          <ThemeProvider initial={theme}>
           <AuthProvider>
             <PageViewTracker />
             <Header />
@@ -62,6 +63,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               </div>
             </footer>
           </AuthProvider>
+          </ThemeProvider>
         </I18nProvider>
       </body>
     </html>

@@ -174,3 +174,19 @@ test("visits are counted without cookies and shown on the admin dashboard", asyn
   await expect(user.page.getByText("You need admin or moderator access")).toBeVisible();
   await user.context.close();
 });
+
+test("dark theme by default; toggle to light persists across reloads @responsive", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(bg).toBe("rgb(13, 17, 23)");
+  await openMenuIfCollapsed(page);
+  await page.getByRole("button", { name: "Switch to light theme" }).filter({ visible: true }).first().click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.reload();
+  // Server renders the saved theme directly, so there is no flash of dark.
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(247, 248, 250)");
+  const results = await new AxeBuilder({ page }).withTags(["wcag2aa"]).analyze();
+  expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+});

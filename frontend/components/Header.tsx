@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Bell, Menu, MessageSquare, Plus, Search, X } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import { ThemeToggle } from "./ThemeToggle";
 import { useI18n } from "@/lib/i18n/client";
 import { LOCALES, type Locale } from "@/lib/i18n/messages";
 
@@ -122,6 +123,7 @@ export function Header() {
             </>
           )}
           <div className="hidden items-center gap-1 md:flex">
+            <ThemeToggle />
             <LocaleSwitcher />
             {!loading &&
               (user ? (
@@ -205,6 +207,9 @@ export function Header() {
                 </Link>
               </li>
             )}
+            <li>
+              <ThemeToggle withLabel />
+            </li>
           </ul>
           <LocaleSwitcher />
         </nav>
