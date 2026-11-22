@@ -10,6 +10,7 @@ import { getT } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import type { Item, Viewer } from "@/lib/types";
 import { ItemActions } from "./ItemActions";
+import { RewardPanel } from "@/components/pricing";
 
 type Params = Promise<{ id: string }>;
 
@@ -54,6 +55,8 @@ export default async function ItemPage({ params }: { params: Params }) {
   }
 
   const { item, viewer } = result.data;
+  const pricing = await serverApi<{ connectionFeePaise: number }>("/pricing", { forwardCookies: false });
+  const feePaise = pricing.ok ? pricing.data.connectionFeePaise : 10000;
   return (
     <div>
       <Link href={`/items?type=${item.type}`} className="mb-4 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary">
@@ -104,6 +107,7 @@ export default async function ItemPage({ params }: { params: Params }) {
               </div>
             </dl>
           </div>
+          {item.reward && item.status !== "returned" && <RewardPanel rewardPaise={item.reward.amountPaise} feePaise={feePaise} t={t} locale={locale} />}
           <ItemActions item={item} viewer={viewer} />
         </div>
       </div>

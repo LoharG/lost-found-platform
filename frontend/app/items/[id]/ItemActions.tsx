@@ -9,7 +9,11 @@ import { ItemCard } from "@/components/items";
 import { flashToast, useToast } from "@/components/Toaster";
 import { markViewed } from "@/components/ViewedBadge";
 import { Alert, Badge, Button, Card, Field, LinkButton, Select, Textarea } from "@/components/ui";
-import { api } from "@/lib/api";
+import { CATEGORIES } from "@/lib/types";
+import { api, ApiError } from "@/lib/api";
+import { inr } from "@/lib/money";
+import { rewardOf, usePricing } from "@/lib/pricing";
+import { CheckoutCard } from "@/components/Checkout";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { Claim, Item, Viewer } from "@/lib/types";
@@ -66,128 +70,151 @@ export function ItemActions({ item, viewer: initialViewer }: { item: Item; viewe
 // Visitor: private contact, claim, report
 // ---------------------------------------------------------------------------
 function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
-  const { t } = useI18n();
-  const router = useRouter();
+  const { t, locale } = useI18n();
   const toast = useToast();
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [contactError, setContactError] = useState<string | null>(null);
-
-  const [claim, setClaim] = useState(viewer.claim);
+  const pricing = usePricing();
+  const feePaise = pricing?.connectionFeePaise ?? 10000;
+  const fee = inr(feePaise, locale);
+  const currentReward = rewardOf(pricing, item.category) ?? item.reward?.amountPaise ?? null;
+  const [claims, setClaims] = useState<Claim[] | null>(null);
   const [answer, setAnswer] = useState("");
-  const [claiming, setClaiming] = useState(false);
-  const [claimError, setClaimError] = useState<string | null>(null);
-  const [claimNotice, setClaimNotice] = useState<string | null>(null);
+  const [acceptReward, setAcceptReward] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(
+    () =>
+      api<{ claims: Claim[] }>(`/items/${item.id}/claims`).then(
+        (res) => setClaims(res.claims),
+        () => setClaims([])
+      ),
+    [item.id]
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const removed = item.moderationState === "removed";
+  if (removed) return null;
 
-  async function contact(event: React.FormEvent) {
+  // In a FOUND listing the visitor is the owner (claims, accepts reward, pays).
+  // In a LOST listing the visitor is the finder (responds, never pays).
+  const visitorIsOwner = item.type === "found";
+  const ctaLabel = visitorIsOwner ? t("claim.cta.found") : t("claim.cta.lost");
+  const active = claims?.find((c) => c.status === "pending" || c.status === "accepted") ?? null;
+  const declined = !active && claims?.some((c) => c.status === "declined");
+
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!message.trim()) return;
-    setSending(true);
-    setContactError(null);
-    try {
-      const res = await api<{ conversationId: number }>(`/items/${item.id}/conversations`, {
-        method: "POST",
-        json: { body: message.trim(), clientId: crypto.randomUUID() },
-      });
-      flashToast(t("toast.messageSent"));
-      router.push(`/inbox/${res.conversationId}`);
-    } catch (error) {
-      setContactError(errorMessage(error, t));
-      setSending(false);
+    setError(null);
+    if (visitorIsOwner && !acceptReward) {
+      setError(t("claim.acceptRewardRequired"));
+      return;
     }
-  }
-
-  async function submitClaim(event: React.FormEvent) {
-    event.preventDefault();
-    setClaiming(true);
-    setClaimError(null);
+    setBusy(true);
     try {
-      const res = await api<{ claim: Claim }>(`/items/${item.id}/claims`, { method: "POST", json: { answer: answer.trim() } });
-      setClaim({ id: res.claim.id, status: res.claim.status });
-      setClaimNotice(t("actions.claim.sent"));
+      await api(`/items/${item.id}/claims`, {
+        method: "POST",
+        json: { answer: answer.trim(), ...(visitorIsOwner ? { acceptReward: true, expectedRewardPaise: currentReward } : {}) },
+      });
       toast(t("toast.claimSent"));
       setAnswer("");
-    } catch (error) {
-      setClaimError(errorMessage(error, t));
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "contact_detected") setError(t("claim.contactDetected"));
+      else if (err instanceof ApiError && err.code === "pricing_changed") {
+        setAcceptReward(false);
+        setError(err.message);
+      } else setError(errorMessage(err, t));
     } finally {
-      setClaiming(false);
+      setBusy(false);
     }
   }
 
-  async function withdraw() {
-    if (!claim) return;
-    setClaiming(true);
+  async function renew(claim: Claim) {
+    setBusy(true);
     try {
-      const res = await api<{ claim: Claim }>(`/claims/${claim.id}/withdraw`, { method: "POST" });
-      setClaim({ id: res.claim.id, status: res.claim.status });
-      setClaimNotice(null);
-      toast(t("toast.claimWithdrawn"), "info");
-    } catch (error) {
-      setClaimError(errorMessage(error, t));
+      await api(`/claims/${claim.id}/terms`, { method: "POST", json: { expectedRewardPaise: currentReward } });
+      toast(t("toast.termsAccepted"));
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, t));
     } finally {
-      setClaiming(false);
+      setBusy(false);
     }
   }
 
-  if (removed) return null;
-  const claimLabel = item.type === "found" ? t("actions.claim.found") : t("actions.claim.lost");
-  const activeClaim = claim && (claim.status === "pending" || claim.status === "accepted");
+  async function withdraw(claim: Claim) {
+    setBusy(true);
+    try {
+      await api(`/claims/${claim.id}/withdraw`, { method: "POST" });
+      toast(t("toast.claimWithdrawn"), "info");
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (claims === null) return <Card><p className="text-sm text-muted">{t("common.loading")}</p></Card>;
+
+  // Accepted match: owner pays to connect; finder waits; unlocked -> open chat.
+  if (active?.status === "accepted") {
+    if (active.unlocked && active.conversationId) {
+      return (
+        <Card>
+          <p className="text-sm">{t("checkout.success")}</p>
+          <LinkButton href={`/inbox/${active.conversationId}`} className="mt-3 w-full">
+            {t("actions.openConversation")}
+          </LinkButton>
+        </Card>
+      );
+    }
+    if (active.viewerRole === "owner" && active.agreement) {
+      return <CheckoutCard claimId={active.id} rewardPaise={active.agreement.rewardPaise} feePaise={active.agreement.feePaise} conversationId={active.conversationId} onPaid={load} />;
+    }
+    return (
+      <Card>
+        <Alert tone="info">{t("claim.waitingPayment", { fee })}</Alert>
+      </Card>
+    );
+  }
 
   return (
     <>
       <Card>
-        <h2 className="flex items-center gap-2 font-semibold">
-          <MessageSquare className="size-4" aria-hidden />
-          {t("actions.contact")}
-        </h2>
-        {viewer.conversationId ? (
-          <LinkButton href={`/inbox/${viewer.conversationId}`} variant="secondary" className="mt-3 w-full">
-            {t("actions.openConversation")}
-          </LinkButton>
-        ) : (
-          <form onSubmit={contact} className="mt-3 flex flex-col gap-3">
-            <Field label={t("actions.contact")} error={contactError ?? undefined}>
-              {(props) => (
-                <Textarea {...props} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t("actions.contactPlaceholder")} maxLength={2000} required />
-              )}
-            </Field>
-            <Button type="submit" loading={sending} disabled={!message.trim()} disabledReason={t("disabled.needMessage")}>
-              {t("actions.send")}
-            </Button>
-          </form>
-        )}
-      </Card>
-
-      <Card>
         <h2 className="font-semibold">{t("actions.claim.title")}</h2>
-        {claimNotice && (
-          <Alert tone="success" className="mt-3">
-            {claimNotice}
-          </Alert>
-        )}
-        {claimError && (
+        <p className="mt-1 text-xs text-muted">{t("claim.lockedInfo", { fee })}</p>
+        {error && (
           <Alert tone="error" className="mt-3">
-            {claimError}
+            {error}
           </Alert>
         )}
-        {activeClaim ? (
+        {active?.status === "pending" ? (
           <div className="mt-3 flex flex-col gap-3">
-            <Alert tone={claim.status === "accepted" ? "success" : "info"}>
-              {claim.status === "accepted" ? t("actions.claim.accepted") : t("actions.claim.pending")}
-            </Alert>
-            {claim.status === "pending" && (
-              <Button type="button" variant="secondary" onClick={withdraw} loading={claiming}>
-                {t("actions.claim.withdraw")}
-              </Button>
+            {visitorIsOwner && active.agreement && active.agreement.current === false ? (
+              <Alert tone="warn">
+                <p className="font-semibold">{t("claim.renewTitle")}</p>
+                <p className="mt-1">{t("claim.renewBody", { amount: inr(currentReward, locale) })}</p>
+                <Button type="button" className="mt-2" loading={busy} onClick={() => renew(active)}>
+                  {t("claim.renewButton", { amount: inr(currentReward, locale) })}
+                </Button>
+              </Alert>
+            ) : (
+              <Alert tone="info">{t("actions.claim.pending")}</Alert>
             )}
+            <Button type="button" variant="secondary" onClick={() => withdraw(active)} loading={busy}>
+              {t("actions.claim.withdraw")}
+            </Button>
           </div>
         ) : item.status !== "open" ? (
           <p className="mt-2 text-sm text-muted">{t("actions.notOpen")}</p>
+        ) : !item.categoryConfirmed ? (
+          <p className="mt-2 text-sm text-muted">{t("owner.confirmCategoryBody")}</p>
         ) : (
-          <form onSubmit={submitClaim} className="mt-3 flex flex-col gap-3">
-            {claim?.status === "declined" && <Alert tone="warn">{t("actions.claim.declined")}</Alert>}
+          <form onSubmit={submit} className="mt-3 flex flex-col gap-3">
+            {declined && <Alert tone="warn">{t("actions.claim.declined")}</Alert>}
             <p className="text-sm">
               {item.ownershipQuestion ? (
                 <>
@@ -200,8 +227,19 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
             <Field label={t("actions.claim.answer")}>
               {(props) => <Textarea {...props} value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={1000} required />}
             </Field>
-            <Button type="submit" loading={claiming} disabled={!answer.trim()} disabledReason={t("disabled.needAnswer")}>
-              {claimLabel}
+            {visitorIsOwner && currentReward && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-found/40 bg-found-bg/40 p-3">
+                <input type="checkbox" className="mt-1 size-5 shrink-0" checked={acceptReward} onChange={(e) => setAcceptReward(e.target.checked)} />
+                <span className="text-sm">{t("claim.acceptReward", { amount: inr(currentReward, locale), fee })}</span>
+              </label>
+            )}
+            <Button
+              type="submit"
+              loading={busy}
+              disabled={!answer.trim() || (visitorIsOwner && !acceptReward)}
+              disabledReason={!answer.trim() ? t("disabled.needAnswer") : t("claim.acceptRewardRequired")}
+            >
+              {ctaLabel}
             </Button>
           </form>
         )}
@@ -323,6 +361,15 @@ function OwnerPanel({ item }: { item: Item }) {
   const [claims, setClaims] = useState<Claim[] | null>(null);
   const [matches, setMatches] = useState<{ score: number; item: Item }[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const pricing = usePricing();
+  const feePaise = pricing?.connectionFeePaise ?? 10000;
+  const currentReward = rewardOf(pricing, item.category) ?? item.reward?.amountPaise ?? null;
+  // Lost listing: the poster is the owner and must accept the reward when accepting a finder.
+  const posterIsOwner = item.type === "lost";
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
+  const [rewardAck, setRewardAck] = useState(false);
+  const [confirmCategory, setConfirmCategory] = useState<string>(item.category);
+  const [categoryAck, setCategoryAck] = useState(false);
 
   const loadClaims = useCallback(
     () =>
@@ -430,6 +477,51 @@ function OwnerPanel({ item }: { item: Item }) {
         </div>
       </Card>
 
+      {!item.categoryConfirmed && item.moderationState !== "removed" && (
+        <Card className="border-warn/50">
+          <h2 className="font-semibold">{t("owner.confirmCategoryTitle")}</h2>
+          <p className="mt-1 text-sm text-muted">{t("owner.confirmCategoryBody")}</p>
+          <div className="mt-3 flex flex-col gap-3">
+            <Field label={t("form.category")}>
+              {(props) => (
+                <Select {...props} value={confirmCategory} onChange={(e) => { setConfirmCategory(e.target.value); setCategoryAck(false); }}>
+                  {CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {t(`category.${category}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            {posterIsOwner && (
+              <label className="flex cursor-pointer items-start gap-3">
+                <input type="checkbox" className="mt-1 size-5 shrink-0" checked={categoryAck} onChange={(e) => setCategoryAck(e.target.checked)} />
+                <span className="text-sm">{t("reward.lost.ack", { amount: inr(rewardOf(pricing, confirmCategory), locale), fee: inr(feePaise, locale) })}</span>
+              </label>
+            )}
+            <Button
+              type="button"
+              disabled={posterIsOwner && !categoryAck}
+              disabledReason={t("reward.lost.ackRequired")}
+              loading={busy === "confirm-category"}
+              onClick={() =>
+                run(
+                  "confirm-category",
+                  () =>
+                    api(`/items/${item.id}/confirm-category`, {
+                      method: "POST",
+                      json: { category: confirmCategory, ...(posterIsOwner ? { acceptRewardTerms: true, expectedRewardPaise: rewardOf(pricing, confirmCategory) } : {}) },
+                    }),
+                  t("toast.categoryConfirmed")
+                )
+              }
+            >
+              {t("owner.confirmCategoryButton")}
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <h2 className="font-semibold">{t("owner.claims")}</h2>
         {claims === null ? (
@@ -449,11 +541,37 @@ function OwnerPanel({ item }: { item: Item }) {
                 </p>
                 <p className="mt-1 text-xs text-muted">{formatDateTime(claim.createdAt, locale)}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {claim.status === "pending" && item.status === "open" && (
+                  {claim.status === "pending" && item.status === "open" && item.categoryConfirmed && (
                     <>
-                      <Button type="button" loading={busy === `a${claim.id}`} onClick={() => run(`a${claim.id}`, () => api(`/claims/${claim.id}/accept`, { method: "POST" }), t("toast.accepted"))}>
-                        {t("owner.accept")}
-                      </Button>
+                      {posterIsOwner ? (
+                        acceptingId === claim.id ? (
+                          <div className="flex w-full flex-col gap-2 rounded-lg border border-found/40 bg-found-bg/40 p-3">
+                            <label className="flex cursor-pointer items-start gap-3">
+                              <input type="checkbox" className="mt-1 size-5 shrink-0" checked={rewardAck} onChange={(e) => setRewardAck(e.target.checked)} />
+                              <span className="text-sm">{t("owner.acceptRewardCheck", { amount: inr(currentReward, locale), fee: inr(feePaise, locale) })}</span>
+                            </label>
+                            <Button
+                              type="button"
+                              disabled={!rewardAck}
+                              disabledReason={t("claim.acceptRewardRequired")}
+                              loading={busy === `a${claim.id}`}
+                              onClick={() =>
+                                run(`a${claim.id}`, () => api(`/claims/${claim.id}/accept`, { method: "POST", json: { acceptReward: true, expectedRewardPaise: currentReward } }), t("toast.accepted"))
+                              }
+                            >
+                              {t("owner.acceptWithReward", { amount: inr(currentReward, locale) })}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button type="button" onClick={() => { setAcceptingId(claim.id); setRewardAck(false); }}>
+                            {t("owner.accept")}
+                          </Button>
+                        )
+                      ) : (
+                        <Button type="button" loading={busy === `a${claim.id}`} onClick={() => run(`a${claim.id}`, () => api(`/claims/${claim.id}/accept`, { method: "POST", json: {} }), t("toast.accepted"))}>
+                          {t("owner.accept")}
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="secondary"
@@ -470,6 +588,15 @@ function OwnerPanel({ item }: { item: Item }) {
                     </Link>
                   )}
                 </div>
+                {claim.status === "accepted" && !claim.unlocked && (
+                  <div className="mt-3">
+                    {claim.viewerRole === "owner" && claim.agreement ? (
+                      <CheckoutCard claimId={claim.id} rewardPaise={claim.agreement.rewardPaise} feePaise={claim.agreement.feePaise} conversationId={claim.conversationId} onPaid={loadClaims} />
+                    ) : (
+                      <Alert tone="info">{t("claim.waitingPayment", { fee: inr(feePaise, locale) })}</Alert>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
