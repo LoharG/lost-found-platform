@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Bell, Menu, MessageSquare, Plus, Search, X } from "lucide-react";
 import { useAuth } from "./AuthProvider";
@@ -43,6 +43,65 @@ export function LocaleSwitcher({ className }: { className?: string }) {
   );
 }
 
+// Primary links with the current page marked (underline + aria-current).
+function NavLinks({ links, mobile = false }: { links: { href: string; label: string }[]; mobile?: boolean }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const isCurrent = (href: string) => {
+    const [path, query] = href.split("?");
+    if (pathname !== path) return false;
+    if (!query) return true;
+    const want = new URLSearchParams(query);
+    return [...want.entries()].every(([key, value]) => params.get(key) === value);
+  };
+  return (
+    <>
+      {links.map((link) =>
+        mobile ? (
+          <li key={link.href}>
+            <Link
+              href={link.href}
+              aria-current={isCurrent(link.href) ? "page" : undefined}
+              className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted aria-[current=page]:bg-info-bg aria-[current=page]:text-primary"
+            >
+              {link.label}
+            </Link>
+          </li>
+        ) : (
+          <Link
+            key={link.href}
+            href={link.href}
+            aria-current={isCurrent(link.href) ? "page" : undefined}
+            className="nav-link rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:text-primary aria-[current=page]:text-primary"
+          >
+            {link.label}
+          </Link>
+        )
+      )}
+    </>
+  );
+}
+
+function StaticLinks({ links, mobile = false }: { links: { href: string; label: string }[]; mobile?: boolean }) {
+  return (
+    <>
+      {links.map((link) =>
+        mobile ? (
+          <li key={link.href}>
+            <Link href={link.href} className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
+              {link.label}
+            </Link>
+          </li>
+        ) : (
+          <Link key={link.href} href={link.href} className="nav-link rounded-lg px-3 py-2 text-sm font-medium hover:text-primary">
+            {link.label}
+          </Link>
+        )
+      )}
+    </>
+  );
+}
+
 export function Header() {
   const { t } = useI18n();
   const { user, loading, counts, logout } = useAuth();
@@ -71,6 +130,15 @@ export function Header() {
     { href: "/items?type=found", label: t("nav.found") },
   ];
   const isModerator = user && (user.role === "moderator" || user.role === "admin");
+  const allLinks = [
+    ...links,
+    ...(isModerator
+      ? [
+          { href: "/admin", label: t("nav.admin") },
+          { href: "/moderation", label: t("nav.moderation") },
+        ]
+      : []),
+  ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
@@ -81,40 +149,28 @@ export function Header() {
         </Link>
 
         <nav aria-label="Primary" className="ml-4 hidden items-center gap-1 md:flex">
-          {links.map((link) => (
-            <Link key={link.href} href={link.href} className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
-              {link.label}
-            </Link>
-          ))}
-          {isModerator && (
-            <>
-              <Link href="/admin" className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
-                {t("nav.admin")}
-              </Link>
-              <Link href="/moderation" className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
-                {t("nav.moderation")}
-              </Link>
-            </>
-          )}
+          <Suspense fallback={<StaticLinks links={allLinks} />}>
+            <NavLinks links={allLinks} />
+          </Suspense>
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
           <Link
             href="/report"
-            className="hidden min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-contrast hover:bg-primary-hover sm:inline-flex"
+            className="hidden min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-contrast shadow-sm transition-[background-color,box-shadow,transform] hover:bg-primary-hover hover:shadow-md active:translate-y-px sm:inline-flex"
           >
             <Plus className="size-4" aria-hidden />
             {t("nav.report")}
           </Link>
           {user && (
             <>
-              <Link href="/inbox" className="relative inline-flex size-11 items-center justify-center rounded-lg hover:bg-surface-muted" aria-label={t("nav.inbox")}>
+              <Link href="/inbox" className="relative inline-flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted hover:text-primary active:scale-95" aria-label={t("nav.inbox")}>
                 <MessageSquare className="size-5" aria-hidden />
                 <CountBadge count={counts.messages} label={t("nav.inbox")} />
               </Link>
               <Link
                 href="/notifications"
-                className="relative inline-flex size-11 items-center justify-center rounded-lg hover:bg-surface-muted"
+                className="relative inline-flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted hover:text-primary active:scale-95"
                 aria-label={t("nav.notifications")}
               >
                 <Bell className="size-5" aria-hidden />
@@ -164,29 +220,11 @@ export function Header() {
       </div>
 
       {open && (
-        <nav id="mobile-menu" aria-label="Mobile" className="border-t border-border bg-surface px-4 pb-4 md:hidden">
+        <nav id="mobile-menu" aria-label="Mobile" className="menu-in border-t border-border bg-surface px-4 pb-4 md:hidden">
           <ul className="flex flex-col py-2">
-            {[{ href: "/report", label: t("nav.report") }, ...links].map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-            {isModerator && (
-              <>
-                <li>
-                  <Link href="/admin" className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
-                    {t("nav.admin")}
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/moderation" className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
-                    {t("nav.moderation")}
-                  </Link>
-                </li>
-              </>
-            )}
+            <Suspense fallback={<StaticLinks links={[{ href: "/report", label: t("nav.report") }, ...allLinks]} mobile />}>
+              <NavLinks links={[{ href: "/report", label: t("nav.report") }, ...allLinks]} mobile />
+            </Suspense>
             {user ? (
               <>
                 <li>

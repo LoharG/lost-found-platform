@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Flag, Link2, MessageSquare } from "lucide-react";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { ItemCard } from "@/components/items";
+import { flashToast, useToast } from "@/components/Toaster";
+import { markViewed } from "@/components/ViewedBadge";
 import { Alert, Badge, Button, Card, Field, LinkButton, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -15,7 +17,9 @@ import type { Claim, Item, Viewer } from "@/lib/types";
 export function ItemActions({ item, viewer: initialViewer }: { item: Item; viewer: Viewer }) {
   const { t } = useI18n();
   const { user, loading } = useAuth();
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
+  useEffect(() => markViewed(item.id), [item.id]);
 
   const share = (
     <Button
@@ -24,6 +28,7 @@ export function ItemActions({ item, viewer: initialViewer }: { item: Item; viewe
       className="self-start"
       onClick={async () => {
         await navigator.clipboard?.writeText(window.location.href).catch(() => {});
+        toast(t("toast.copied"));
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
@@ -63,6 +68,7 @@ export function ItemActions({ item, viewer: initialViewer }: { item: Item; viewe
 function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
   const { t } = useI18n();
   const router = useRouter();
+  const toast = useToast();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
@@ -85,6 +91,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
         method: "POST",
         json: { body: message.trim(), clientId: crypto.randomUUID() },
       });
+      flashToast(t("toast.messageSent"));
       router.push(`/inbox/${res.conversationId}`);
     } catch (error) {
       setContactError(errorMessage(error, t));
@@ -100,6 +107,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
       const res = await api<{ claim: Claim }>(`/items/${item.id}/claims`, { method: "POST", json: { answer: answer.trim() } });
       setClaim({ id: res.claim.id, status: res.claim.status });
       setClaimNotice(t("actions.claim.sent"));
+      toast(t("toast.claimSent"));
       setAnswer("");
     } catch (error) {
       setClaimError(errorMessage(error, t));
@@ -115,6 +123,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
       const res = await api<{ claim: Claim }>(`/claims/${claim.id}/withdraw`, { method: "POST" });
       setClaim({ id: res.claim.id, status: res.claim.status });
       setClaimNotice(null);
+      toast(t("toast.claimWithdrawn"), "info");
     } catch (error) {
       setClaimError(errorMessage(error, t));
     } finally {
@@ -144,7 +153,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
                 <Textarea {...props} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t("actions.contactPlaceholder")} maxLength={2000} required />
               )}
             </Field>
-            <Button type="submit" loading={sending} disabled={!message.trim()}>
+            <Button type="submit" loading={sending} disabled={!message.trim()} disabledReason={t("disabled.needMessage")}>
               {t("actions.send")}
             </Button>
           </form>
@@ -191,7 +200,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
             <Field label={t("actions.claim.answer")}>
               {(props) => <Textarea {...props} value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={1000} required />}
             </Field>
-            <Button type="submit" loading={claiming} disabled={!answer.trim()}>
+            <Button type="submit" loading={claiming} disabled={!answer.trim()} disabledReason={t("disabled.needAnswer")}>
               {claimLabel}
             </Button>
           </form>
@@ -205,6 +214,7 @@ function VisitorPanel({ item, viewer }: { item: Item; viewer: Viewer }) {
 
 function ReportListing({ itemId, alreadyReported }: { itemId: number; alreadyReported: boolean }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("spam");
   const [details, setDetails] = useState("");
@@ -230,6 +240,7 @@ function ReportListing({ itemId, alreadyReported }: { itemId: number; alreadyRep
           setError(null);
           try {
             await api(`/items/${itemId}/reports`, { method: "POST", json: { reason, details: details.trim() || undefined } });
+            toast(t("toast.reportSent"));
             setState("done");
           } catch (err) {
             setError(errorMessage(err, t));
@@ -275,9 +286,38 @@ const NEXT_STATUSES: Record<string, ("returned" | "closed" | "open")[]> = {
   returned: [],
 };
 
+function Confetti() {
+  // Short, decorative burst; hidden from assistive tech and from reduced-motion users.
+  const colors = ["#f26a3d", "#1d4ed8", "#067647", "#fdb022", "#b42318", "#5b8cf5"];
+  return (
+    <span aria-hidden className="celebrate pointer-events-none absolute inset-0 motion-reduce:hidden">
+      {Array.from({ length: 18 }).map((_, i) => {
+        const angle = (i / 18) * Math.PI * 2;
+        const distance = 60 + (i % 3) * 25;
+        return (
+          <i
+            key={i}
+            style={
+              {
+                background: colors[i % colors.length],
+                "--dx": `${Math.cos(angle) * distance}px`,
+                "--dy": `${Math.sin(angle) * distance}px`,
+                animationDelay: `${(i % 4) * 30}ms`,
+              } as React.CSSProperties
+            }
+          />
+        );
+      })}
+    </span>
+  );
+}
+
 function OwnerPanel({ item }: { item: Item }) {
   const { t, locale } = useI18n();
   const router = useRouter();
+  const toast = useToast();
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claims, setClaims] = useState<Claim[] | null>(null);
@@ -300,11 +340,17 @@ function OwnerPanel({ item }: { item: Item }) {
       .catch(() => setMatches([]));
   }, [item.id, loadClaims]);
 
-  async function run(key: string, fn: () => Promise<unknown>) {
+  async function run(key: string, fn: () => Promise<unknown>, success?: string) {
     setBusy(key);
     setError(null);
     try {
       await fn();
+      if (success) toast(success);
+      if (key === "returned") {
+        setCelebrate(true);
+        if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+        celebrateTimer.current = setTimeout(() => setCelebrate(false), 1200);
+      }
       await loadClaims();
       router.refresh();
     } catch (err) {
@@ -319,7 +365,8 @@ function OwnerPanel({ item }: { item: Item }) {
 
   return (
     <>
-      <Card>
+      <Card className="relative">
+        {celebrate && <Confetti />}
         <h2 className="font-semibold">{t("owner.title")}</h2>
         {error && (
           <Alert tone="error" className="mt-3">
@@ -339,7 +386,13 @@ function OwnerPanel({ item }: { item: Item }) {
                 type="button"
                 variant={status === "returned" ? "primary" : "secondary"}
                 loading={busy === status}
-                onClick={() => run(status, () => api(`/items/${item.id}/status`, { method: "POST", json: { status } }))}
+                onClick={() =>
+                  run(
+                    status,
+                    () => api(`/items/${item.id}/status`, { method: "POST", json: { status } }),
+                    status === "returned" ? t("toast.returned") : status === "closed" ? t("toast.closed") : t("toast.reopened")
+                  )
+                }
               >
                 {statusLabel[status]}
               </Button>
@@ -357,6 +410,7 @@ function OwnerPanel({ item }: { item: Item }) {
                   onClick={() =>
                     run("delete", async () => {
                       await api(`/items/${item.id}`, { method: "DELETE" });
+                      flashToast(t("toast.deleted"));
                       router.push("/account");
                     })
                   }
@@ -397,14 +451,14 @@ function OwnerPanel({ item }: { item: Item }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {claim.status === "pending" && item.status === "open" && (
                     <>
-                      <Button type="button" loading={busy === `a${claim.id}`} onClick={() => run(`a${claim.id}`, () => api(`/claims/${claim.id}/accept`, { method: "POST" }))}>
+                      <Button type="button" loading={busy === `a${claim.id}`} onClick={() => run(`a${claim.id}`, () => api(`/claims/${claim.id}/accept`, { method: "POST" }), t("toast.accepted"))}>
                         {t("owner.accept")}
                       </Button>
                       <Button
                         type="button"
                         variant="secondary"
                         loading={busy === `d${claim.id}`}
-                        onClick={() => run(`d${claim.id}`, () => api(`/claims/${claim.id}/decline`, { method: "POST" }))}
+                        onClick={() => run(`d${claim.id}`, () => api(`/claims/${claim.id}/decline`, { method: "POST" }), t("toast.declined"))}
                       >
                         {t("owner.decline")}
                       </Button>
@@ -450,6 +504,7 @@ function OwnerPanel({ item }: { item: Item }) {
 // ---------------------------------------------------------------------------
 function ModeratorPanel({ item }: { item: Item }) {
   const { t } = useI18n();
+  const toast = useToast();
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -467,6 +522,7 @@ function ModeratorPanel({ item }: { item: Item }) {
           setError(null);
           try {
             await api(`/moderation/items/${item.id}/${removed ? "restore" : "remove"}`, { method: "POST", json: { reason } });
+            toast(removed ? t("toast.restored") : t("toast.removed"));
             setReason("");
             router.refresh();
           } catch (err) {
@@ -478,7 +534,7 @@ function ModeratorPanel({ item }: { item: Item }) {
       >
         {error && <Alert tone="error">{error}</Alert>}
         <Field label={t("moderation.reason")}>{(props) => <Textarea {...props} value={reason} onChange={(e) => setReason(e.target.value)} minLength={3} maxLength={500} required />}</Field>
-        <Button type="submit" variant={removed ? "secondary" : "danger"} loading={busy}>
+        <Button type="submit" variant={removed ? "secondary" : "danger"} loading={busy} disabled={reason.trim().length < 3} disabledReason={t("disabled.needReason")}>
           {removed ? t("moderation.restore") : t("moderation.remove")}
         </Button>
       </form>

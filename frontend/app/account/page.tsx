@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { StatusBadge, TypeBadge } from "@/components/items";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select } from "@/components/ui";
+import { ListSkeleton } from "@/components/Skeleton";
+import { useToast } from "@/components/Toaster";
 import { api, fieldErrors } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -18,6 +20,7 @@ const COUNTRIES = ["IN", "US", "GB", "AE", "SA", "SG", "AU", "CA", "DE", "FR", "
 function Profile() {
   const { t, locale, setLocale } = useI18n();
   const { user, refresh } = useAuth();
+  const toast = useToast();
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [country, setCountry] = useState("IN");
@@ -38,6 +41,7 @@ function Profile() {
       });
       await refresh();
       setStatus({ tone: "success", text: t("account.saved") });
+      toast(t("toast.profileSaved"));
     } catch (err) {
       setErrors(fieldErrors(err));
       setStatus({ tone: "error", text: errorMessage(err, t) });
@@ -106,13 +110,13 @@ function MyListings() {
       {error ? (
         <Alert tone="error">{error}</Alert>
       ) : !items ? (
-        <Spinner label={t("common.loading")} />
+        <ListSkeleton rows={3} label={t("common.loading")} />
       ) : items.length === 0 ? (
         <p className="text-sm text-muted">{t("account.noListings")}</p>
       ) : (
         <ul className="divide-y divide-border">
           {items.map((item) => (
-            <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+            <li key={item.id} className="-mx-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-3 transition-colors hover:bg-surface-muted">
               <div className="min-w-0">
                 <Link href={`/items/${item.id}`} className="font-medium text-primary underline-offset-4 hover:underline">
                   {item.title}
@@ -177,7 +181,7 @@ function DataControls() {
               {(props) => <Input {...props} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />}
             </Field>
           </div>
-          <Button type="submit" variant="danger" loading={busy} disabled={confirm !== "DELETE"}>
+          <Button type="submit" variant="danger" loading={busy} disabled={confirm !== "DELETE"} disabledReason={t("disabled.needConfirm")}>
             {t("account.deleteButton")}
           </Button>
         </form>

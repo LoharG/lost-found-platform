@@ -2,7 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
-import { Card, LinkButton, Spinner } from "./ui";
+import { Card, LinkButton } from "./ui";
+import { PanelSkeleton } from "./Skeleton";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -12,7 +13,7 @@ export function RequireAuth({ children, message = "common.signInRequired" }: { c
   const { user, loading } = useAuth();
   const { t } = useI18n();
   const pathname = usePathname();
-  if (loading) return <Spinner label={t("common.loading")} />;
+  if (loading) return <PanelSkeleton label={t("common.loading")} />;
   if (!user) {
     return (
       <Card className="mx-auto max-w-md text-center">

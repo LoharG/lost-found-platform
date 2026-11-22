@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import clsx from "clsx";
 import { Check, LocateFixed, SlidersHorizontal, X } from "lucide-react";
 import { Alert, Button, Field, Input, Select } from "./ui";
@@ -50,10 +50,13 @@ export function SearchFilters({ initial }: { initial: Filters }) {
   const [geoError, setGeoError] = useState(false);
   const activeAdvanced = ADVANCED.filter((key) => initial[key] && !(key === "status" && initial.status === "active")).length;
   const [expanded, setExpanded] = useState(activeAdvanced > 0);
+  const [pending, startTransition] = useTransition();
 
   const set = (key: keyof Filters) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setValues((current) => ({ ...current, [key]: event.target.value }));
-  const navigate = (next: Filters) => router.push(toHref(next));
+  // Navigations run in a transition: the results stay on screen (dimmed via
+  // data-search-pending) with a progress bar until the new page is ready.
+  const navigate = (next: Filters) => startTransition(() => router.push(toHref(next)));
   const choose = (key: keyof Filters, value: string) => {
     const next = { ...values, [key]: value };
     setValues(next);
@@ -100,7 +103,12 @@ export function SearchFilters({ initial }: { initial: Filters }) {
   if (initial.lat && initial.lng) applied.push({ key: "near", label: t("filters.nearMe", { km: initial.radiusKm || "10" }), without: drop("lat", "lng", "radiusKm", "sort") });
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" data-search-pending={pending || undefined}>
+      {pending && (
+        <div role="progressbar" aria-label={t("common.loading")} className="fixed inset-x-0 top-0 z-50 h-1 overflow-hidden bg-primary/20">
+          <div className="progress-indeterminate h-full w-1/3 bg-primary" />
+        </div>
+      )}
       <form
         role="search"
         onSubmit={(event) => {
@@ -210,7 +218,7 @@ export function SearchFilters({ initial }: { initial: Filters }) {
                 event.preventDefault();
                 navigate(filter.without);
               }}
-              className="fade-in inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-info-bg px-3 text-sm font-medium transition-colors hover:border-lost hover:text-lost"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-info-bg px-3 text-sm font-medium transition-colors hover:border-lost hover:text-lost"
               aria-label={t("filters.remove", { label: filter.label })}
             >
               {filter.label}

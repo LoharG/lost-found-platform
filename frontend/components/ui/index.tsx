@@ -26,11 +26,11 @@ export const Button = forwardRef<
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       title={reason ?? title}
-      aria-description={reason}
       {...props}
     >
       {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
       {children}
+      {reason && <span className="sr-only"> ({reason})</span>}
     </button>
   );
 });

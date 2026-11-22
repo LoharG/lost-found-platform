@@ -44,7 +44,9 @@ test("visitor finds a listing beyond the first page with search, filters and pag
   // Filters are reflected in a shareable URL.
   await page.goto("/items?type=lost");
   await page.getByRole("button", { name: "Filters" }).click();
-  await page.getByLabel("Category").selectOption("bag");
+  await page.getByRole("button", { name: "Bag", exact: true }).click(); // chip applies immediately
+  await expect(page).toHaveURL(/category=bag/);
+  await expect(page.getByRole("button", { name: "Bag", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Location contains").fill("Koregaon");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page).toHaveURL(/category=bag/);
@@ -97,7 +99,7 @@ test("reporter creates a listing with photos, finds it, edits it and sees change
 
   // Discoverable by search.
   await page.goto(`/items?q=${encodeURIComponent(title)}`);
-  await expect(page.getByRole("link", { name: title })).toBeVisible();
+  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
 
   // Edit and refresh.
   await page.goto(itemUrl);

@@ -7,7 +7,9 @@ import clsx from "clsx";
 import { ArrowLeft, Phone, ShieldAlert } from "lucide-react";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Alert, Badge, Button, Card, Spinner, Textarea } from "@/components/ui";
+import { Alert, Badge, Button, Card, Textarea } from "@/components/ui";
+import { PanelSkeleton } from "@/components/Skeleton";
+import { useToast } from "@/components/Toaster";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -27,6 +29,7 @@ type Conversation = {
 function ConversationView({ id }: { id: string }) {
   const { t, locale } = useI18n();
   const { user, refreshCounts } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState<Conversation | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +96,7 @@ function ConversationView({ id }: { id: string }) {
     setData((current) => (current ? { ...current, sharingMyPhone: share } : current));
     try {
       await api(`/conversations/${id}/phone-sharing`, { method: "POST", json: { share } });
+      toast(share ? t("toast.phoneShared") : t("toast.phoneHidden"), "info");
       await load();
     } catch (err) {
       setData((current) => (current ? { ...current, sharingMyPhone: !share } : current));
@@ -103,7 +107,7 @@ function ConversationView({ id }: { id: string }) {
   }
 
   if (notFound) return <Alert tone="error">{t("inbox.notFound")}</Alert>;
-  if (!data) return error ? <Alert tone="error">{error}</Alert> : <Spinner label={t("common.loading")} />;
+  if (!data) return error ? <Alert tone="error">{error}</Alert> : <PanelSkeleton label={t("common.loading")} />;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -143,7 +147,7 @@ function ConversationView({ id }: { id: string }) {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
               }}
             />
-            <Button type="submit" loading={sending} disabled={!draft.trim()}>
+            <Button type="submit" loading={sending} disabled={!draft.trim()} disabledReason={t("disabled.needMessage")}>
               {t("inbox.send")}
             </Button>
           </form>

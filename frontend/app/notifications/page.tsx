@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Alert, Button, EmptyState, PageHeader, Spinner } from "@/components/ui";
+import { Alert, Button, EmptyState, PageHeader } from "@/components/ui";
+import { ListSkeleton } from "@/components/Skeleton";
+import { useToast } from "@/components/Toaster";
 import { api } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -30,6 +32,7 @@ function hrefFor(n: Notification) {
 function NotificationList() {
   const { t, locale } = useI18n();
   const { refreshCounts } = useAuth();
+  const toast = useToast();
   const [items, setItems] = useState<Notification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,10 +53,11 @@ function NotificationList() {
     await api("/notifications/read", { method: "POST", json: {} }).catch(() => {});
     await load();
     refreshCounts();
+    toast(t("toast.allRead"), "info");
   }
 
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!items) return <Spinner label={t("common.loading")} />;
+  if (!items) return <ListSkeleton label={t("common.loading")} />;
   if (items.length === 0) return <EmptyState title={t("notifications.empty")} />;
 
   return (
@@ -85,7 +89,7 @@ function NotificationList() {
               {href ? (
                 <Link
                   href={href}
-                  className="block min-h-14 px-4 py-3 hover:bg-surface-muted"
+                  className="block min-h-14 px-4 py-3 transition-colors hover:bg-surface-muted"
                   onClick={() => api("/notifications/read", { method: "POST", json: { ids: [n.id] } }).then(refreshCounts).catch(() => {})}
                 >
                   {content}

@@ -60,7 +60,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           {t("browse.invalid")}
         </Alert>
       )}
-      <div className="mt-6">
+      <div id="search-results" className="mt-6">
         {!result.ok ? (
           <Alert tone="error">{t("browse.error")}</Alert>
         ) : result.data.items.length === 0 ? (

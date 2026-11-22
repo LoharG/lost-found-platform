@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Alert, Card, PageHeader, Select, Spinner } from "@/components/ui";
+import { Alert, Card, PageHeader, Select } from "@/components/ui";
+import { PanelSkeleton } from "@/components/Skeleton";
 import { VisitorsChart, type DailyPoint } from "@/components/VisitorsChart";
 import { api } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
@@ -81,7 +82,7 @@ function Dashboard() {
 
   if (!allowed) return <Alert tone="error">{t("admin.forbidden")}</Alert>;
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!data) return <Spinner label={t("common.loading")} />;
+  if (!data) return <PanelSkeleton label={t("common.loading")} />;
 
   const n = (value: number) => formatNumber(value, locale);
   const empty = data.totals.viewsPeriod === 0;

@@ -101,7 +101,7 @@ export function ImageGallery({ images, title }: { images: ItemImage[]; title: st
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        className="m-0 h-dvh max-h-none w-screen max-w-none bg-black/90 p-0 text-white backdrop:bg-black/80"
+        className="m-0 h-dvh max-h-none w-screen max-w-none bg-black/95 p-0 text-white backdrop:bg-black/90"
       >
         <div
           className="flex h-full w-full flex-col"

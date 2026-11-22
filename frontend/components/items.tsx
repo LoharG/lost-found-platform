@@ -14,7 +14,14 @@ export function TypeBadge({ type, t }: { type: ItemType; t: T }) {
 
 export function StatusBadge({ status, t }: { status: ItemStatus; t: T }) {
   if (status === "open") return null;
-  return <Badge tone={status === "returned" ? "success" : status === "claimed" ? "warn" : "neutral"}>{t(`status.${status}`)}</Badge>;
+  return (
+    <span className="inline-flex">
+      <Badge tone={status === "returned" ? "success" : status === "claimed" ? "warn" : "neutral"}>
+        {status === "returned" ? "🎉 " : ""}
+        {t(`status.${status}`)}
+      </Badge>
+    </span>
+  );
 }
 
 export function ItemCard({ item, t, locale, headingLevel = 2 }: { item: Item; t: T; locale: Locale; headingLevel?: 2 | 3 }) {

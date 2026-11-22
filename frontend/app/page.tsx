@@ -106,9 +106,9 @@ export default async function Home() {
               </h2>
               <Link
                 href={`/items?type=${key}`}
-                className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary"
+                className="group inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary"
               >
-                {t("home.seeAll")} <ArrowRight className="size-4" aria-hidden />
+                {t("home.seeAll")} <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" aria-hidden />
               </Link>
             </div>
             <ItemGrid
@@ -145,7 +145,7 @@ export default async function Home() {
           ].map(({ icon: Icon, title, body }) => (
             <li
               key={title}
-              className="rounded-xl border border-border bg-surface p-5"
+              className="rounded-xl border border-border bg-surface p-5 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/50"
             >
               <Icon className="size-6 text-primary" aria-hidden />
               <h3 className="mt-3 font-semibold">{title}</h3>

@@ -81,7 +81,7 @@ export function LoginForm() {
       {providers?.google && (
         <a
           href={providerHref("google")}
-          className="inline-flex min-h-12 items-center justify-center gap-3 rounded-lg border border-border bg-surface px-4 font-semibold hover:bg-surface-muted"
+          className="inline-flex min-h-12 items-center justify-center gap-3 rounded-lg border border-border bg-surface px-4 font-semibold transition-[background-color,border-color,transform] hover:border-primary/60 hover:bg-surface-muted active:translate-y-px"
         >
           <svg aria-hidden viewBox="0 0 24 24" className="size-5">
             <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.8-5.5 3.8-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.2 14.6 2.2 12 2.2 6.6 2.2 2.2 6.6 2.2 12s4.4 9.8 9.8 9.8c5.7 0 9.4-4 9.4-9.6 0-.6-.1-1.1-.2-1.6H12z" />
@@ -132,7 +132,7 @@ export function LoginForm() {
                   />
                 )}
               </Field>
-              <Button type="submit" loading={busy} disabled={code.length !== 6}>
+              <Button type="submit" loading={busy} disabled={code.length !== 6} disabledReason={t("disabled.needCode")}>
                 {t("login.verify")}
               </Button>
               <Button

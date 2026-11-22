@@ -113,6 +113,11 @@ body {
 .nav-link:focus-visible::after,
 .nav-link[aria-current="page"]::after { left: 12px; right: 12px; }
 
+/* Search: indeterminate progress bar and dimmed results while filters load. */
+.progress-indeterminate { animation: progress 1s ease-in-out infinite; }
+@keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+main:has([data-search-pending]) #search-results { opacity: 0.55; transition: opacity 150ms; pointer-events: none; }
+
 /* "Returned" celebration: a short burst of confetti dots. */
 .celebrate { position: relative; }
 .celebrate > i {

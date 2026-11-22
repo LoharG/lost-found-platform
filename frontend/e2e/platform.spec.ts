@@ -188,5 +188,100 @@ test("dark theme by default; toggle to light persists across reloads @responsive
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(247, 248, 250)");
   const results = await new AxeBuilder({ page }).withTags(["wcag2aa"]).analyze();
-  expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+  expect(
+    results.violations
+      .filter((v) => v.impact === "serious" || v.impact === "critical")
+      .map((v) => `${v.id}: ${v.nodes.map((n) => `${n.target.join(" ")} ${n.any[0]?.message ?? ""}`).join(" || ")}`)
+  ).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// Interaction feedback: active nav, chips, filter pills, viewer, toasts, viewed
+// ---------------------------------------------------------------------------
+test("interaction feedback: nav state, chips, removable filters, photo viewer, toasts, viewed badge", async ({ browser, page }) => {
+  const poster = await newUser(browser, persona("ux-poster"));
+  const png = await (async () => {
+    const p = await poster.context.newPage();
+    await p.setContent('<div style="width:320px;height:240px;background:linear-gradient(45deg,#0a0,#00c)"></div>');
+    return p.locator("div").screenshot({ type: "png" });
+  })();
+  const token = (await (await poster.context.request.get("/api/auth/me")).json()).csrfToken;
+  const created = await poster.context.request.post("/api/items", {
+    headers: { "X-CSRF-Token": token },
+    multipart: {
+      type: "found",
+      title: `UX umbrella ${RUN}`,
+      category: "other",
+      location: "Camp",
+      date: new Date().toISOString().slice(0, 10),
+      images: { name: "a.png", mimeType: "image/png", buffer: png },
+    },
+  });
+  const item = (await created.json()).item;
+  await apiTwoPhotos(poster.context, item.id, png);
+
+  // Active nav link
+  await page.goto("/items?type=found");
+  await openMenuIfCollapsed(page);
+  await expect(page.getByRole("link", { name: "Found items" }).filter({ visible: true }).first()).toHaveAttribute("aria-current", "page");
+
+  // Type chip + removable filter pill
+  await page.goto(`/items?q=${encodeURIComponent(`UX umbrella ${RUN}`)}`);
+  await page.getByRole("button", { name: "Found", exact: true }).click();
+  await expect(page).toHaveURL(/type=found/);
+  const pill = page.getByRole("link", { name: /Remove filter: Found/ });
+  await expect(pill).toBeVisible();
+  await pill.click();
+  await expect(page).not.toHaveURL(/type=found/);
+
+  // Photo viewer: open, next with keyboard, close with Escape and focus returns
+  await page.goto(`/items/${item.id}`);
+  const opener = page.getByRole("button", { name: /Open photo 1 full screen/ });
+  await opener.click();
+  const viewer = page.getByRole("dialog");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.getByText("Photo 1 of 2")).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(viewer.getByText("Photo 2 of 2")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+  await expect(page.getByRole("button", { name: /Open photo 2 full screen/ })).toBeFocused();
+
+  // Toast on copy link (clipboard may be unavailable; toast still confirms)
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Link copied to clipboard" })).toBeVisible();
+
+  // Viewed badge on the card after opening the listing
+  await page.goto(`/items?q=${encodeURIComponent(`UX umbrella ${RUN}`)}`);
+  await expect(page.locator("article").filter({ hasText: `UX umbrella ${RUN}` }).getByText("Viewed")).toBeVisible();
+  await poster.context.close();
+});
+
+async function apiTwoPhotos(context: import("@playwright/test").BrowserContext, id: number, png: Buffer) {
+  const token = (await (await context.request.get("/api/auth/me")).json()).csrfToken;
+  const res = await context.request.patch(`/api/items/${id}`, {
+    headers: { "X-CSRF-Token": token },
+    multipart: { images: { name: "b.png", mimeType: "image/png", buffer: png } },
+  });
+  expect(res.status()).toBe(200);
+}
+
+test("disabled buttons explain why; publishing shows a toast after redirect", async ({ browser }) => {
+  const { context, page } = await newUser(browser, persona("ux-toast"));
+  const other = await newUser(browser, persona("ux-target"));
+  const target = await createListing(other.context, { title: `UX target ${RUN}`, category: "keys", type: "found" });
+  await page.goto(`/items/${target.id}`);
+  const send = page.getByRole("button", { name: /Send/ }).first();
+  await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute("title", "Write a message first");
+
+  await page.goto("/report?type=lost");
+  await page.getByLabel("What is it?").fill(`UX toast item ${RUN}`);
+  await page.getByLabel("Category").selectOption("other");
+  await page.getByLabel("Where?").fill("Pune");
+  await page.getByRole("button", { name: "Publish listing" }).click();
+  await expect(page).toHaveURL(/\/items\/\d+$/);
+  await expect(page.getByRole("status").filter({ hasText: "Listing published" })).toBeVisible();
+  await context.close();
+  await other.context.close();
 });

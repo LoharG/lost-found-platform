@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { errorMessage } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Alert, Badge, EmptyState, PageHeader, Spinner } from "@/components/ui";
+import { Alert, Badge, EmptyState, PageHeader } from "@/components/ui";
+import { ListSkeleton } from "@/components/Skeleton";
 import { api } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -32,14 +33,14 @@ function InboxList() {
   }, [t]);
 
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!items) return <Spinner label={t("common.loading")} />;
+  if (!items) return <ListSkeleton label={t("common.loading")} />;
   if (items.length === 0) return <EmptyState title={t("inbox.title")} body={t("inbox.empty")} />;
 
   return (
     <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
       {items.map((c) => (
         <li key={c.id}>
-          <Link href={`/inbox/${c.id}`} className="flex min-h-16 flex-col gap-1 px-4 py-3 hover:bg-surface-muted">
+          <Link href={`/inbox/${c.id}`} className="flex min-h-16 flex-col gap-1 px-4 py-3 transition-colors hover:bg-surface-muted">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold">{c.counterpart.displayName}</span>
               <span className="flex items-center gap-2 text-xs text-muted">

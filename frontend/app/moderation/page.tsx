@@ -12,10 +12,11 @@ import {
   EmptyState,
   Field,
   PageHeader,
-  Spinner,
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { ListSkeleton } from "@/components/Skeleton";
+import { useToast } from "@/components/Toaster";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -43,6 +44,7 @@ type Action = {
 
 function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const { t, locale } = useI18n();
+  const toast = useToast();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,7 @@ function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
     setError(null);
     try {
       await api(path, { method: "POST", json: { reason } });
+      toast(key === "remove" ? t("toast.removed") : t("toast.dismissed"));
       onDone();
     } catch (err) {
       setError(errorMessage(err, t));
@@ -117,7 +120,7 @@ function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
               <Button
                 type="button"
                 variant="danger"
-                disabled={reason.trim().length < 3}
+                disabled={reason.trim().length < 3} disabledReason={t("disabled.needReason")}
                 loading={busy === "remove"}
                 onClick={() =>
                   act("remove", `/moderation/items/${entry.item.id}/remove`)
@@ -131,7 +134,7 @@ function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
                 key={report.id}
                 type="button"
                 variant="secondary"
-                disabled={reason.trim().length < 3}
+                disabled={reason.trim().length < 3} disabledReason={t("disabled.needReason")}
                 loading={busy === `d${report.id}`}
                 onClick={() =>
                   act(
@@ -181,7 +184,7 @@ function Queue() {
 
   if (!allowed) return <Alert tone="error">{t("moderation.forbidden")}</Alert>;
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!entries) return <Spinner label={t("common.loading")} />;
+  if (!entries) return <ListSkeleton rows={3} label={t("common.loading")} />;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
