@@ -44,6 +44,8 @@ export type Item = {
   updatedAt: string;
   images: ItemImage[];
   reporter: { displayName: string };
+  reward: { kind: "finder_reward" | "category_reward"; amountPaise: number; currency: "INR" } | null;
+  categoryConfirmed: boolean;
   // Owner/moderator view only
   latitude?: number | null;
   longitude?: number | null;
@@ -62,12 +64,34 @@ export type Viewer = {
 
 export type ClaimStatus = "pending" | "accepted" | "declined" | "withdrawn" | "revoked" | "superseded";
 
+export type Agreement = {
+  category: Category;
+  rewardPaise: number;
+  feePaise: number;
+  currency: "INR";
+  pricingVersion: string;
+  termsVersion?: string;
+  acceptedAt?: string;
+  current?: boolean;
+};
+
+export type PaymentStatus = "none" | "created" | "pending" | "paid" | "failed" | "cancelled" | "refund_pending" | "refunded";
+export type RewardStatus = "awaiting" | "confirmed" | "issue";
+
 export type Claim = {
   id: number;
   itemId: number;
   status: ClaimStatus;
   claimant: { id: number; displayName: string };
+  viewerRole: "owner" | "finder" | null;
+  claimantRole: "owner" | "finder";
   answer?: string;
+  agreement: Agreement | null;
+  payment: { status: PaymentStatus };
+  unlocked: boolean;
+  unlockSource: "grandfathered" | "payment" | null;
+  returnConfirmedAt: string | null;
+  reward: { status: RewardStatus; at: string | null; note: string | null };
   createdAt: string;
   decidedAt: string | null;
   conversationId: number | null;

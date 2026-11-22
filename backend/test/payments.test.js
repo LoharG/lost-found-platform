@@ -255,7 +255,7 @@ describe("contact-detail safeguards", () => {
     const base = (desc) => http.post("/api/items").field("type", "found").field("title", "Wallet").field("category", "wallet").field("location", "Pune").field("date", new Date().toISOString().slice(0, 10)).field("description", desc);
     const rejected = await base("Call me on 98765 43210");
     assert.equal(rejected.status, 422);
-    assert.deepEqual(rejected.body.error.details.fields, { description: ["phone"] });
+    assert.deepEqual(rejected.body.error.details.fields, { description: ["phone", "messaging"] });
     const held = await base("Model 9876543210 printed inside").field("reviewRequested", "true").expect(201);
     assert.equal((await ctx.anonymous().get(`/api/items/${held.body.item.id}`)).status, 404);
     const mod = await ctx.agent({ email: "contact-mod@example.com", role: "moderator" });
