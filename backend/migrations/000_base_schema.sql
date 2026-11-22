@@ -1,7 +1,8 @@
--- Base schema (inferred from backend queries). Runs once on first DB start.
+-- Base schema for installs that never had the hand-created tables.
+-- Idempotent so it is safe on databases created by the original prototype.
 CREATE TABLE IF NOT EXISTS users (
     id                  SERIAL PRIMARY KEY,
-    google_id           VARCHAR(255) UNIQUE NOT NULL,
+    google_id           VARCHAR(255) UNIQUE,
     name                VARCHAR(255),
     email               VARCHAR(255),
     profile_image       TEXT,
@@ -21,4 +22,3 @@ CREATE TABLE IF NOT EXISTS items (
     user_id     INTEGER REFERENCES users(id),
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
