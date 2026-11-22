@@ -1,6 +1,6 @@
 import { Item } from "../types/item";
 
-export const lostItems: Item[] = [
+export const lostItems: Pick<Item, "id" | "name" | "location" | "date">[] = [
   {
     id: 1,
     name: "iPhone 15 Pro",

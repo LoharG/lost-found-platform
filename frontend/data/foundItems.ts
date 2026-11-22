@@ -1,6 +1,6 @@
 import { Item } from "../types/item";
 
-export const foundItems: Item[] = [
+export const foundItems: Pick<Item, "id" | "name" | "location" | "date">[] = [
   {
     id: 1,
     name: "Wallet",

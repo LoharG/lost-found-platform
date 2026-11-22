@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+      POSTGRES_DB: lost_found_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init/000_schema.sql:/docker-entrypoint-initdb.d/000_schema.sql:ro
+      - ./backend/migrations/001_update_items_user_fk.sql:/docker-entrypoint-initdb.d/001_update_items_user_fk.sql:ro
+      - ./backend/migrations/002_add_item_type_check.sql:/docker-entrypoint-initdb.d/002_add_item_type_check.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lost_found_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-admin}
+      DB_NAME: lost_found_db
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-placeholder}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-placeholder}
+    ports:
+      - "5000:5000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:
