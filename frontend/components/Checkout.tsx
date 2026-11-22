@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, FlaskConical, Handshake } from "lucide-react";
-import { errorMessage } from "./AuthProvider";
+import { errorMessage, useAuth } from "./AuthProvider";
 import { flashToast, useToast } from "./Toaster";
 import { Alert, Button, Card } from "./ui";
 import { api } from "@/lib/api";
@@ -35,6 +35,7 @@ function loadRazorpay(): Promise<void> {
 // display-only; the server fixes the order at ₹100 INR.
 export function CheckoutCard({ claimId, rewardPaise, feePaise, conversationId, onPaid }: { claimId: number; rewardPaise: number; feePaise: number; conversationId?: number | null; onPaid?: () => void }) {
   const { t, locale } = useI18n();
+  const { user } = useAuth();
   const toast = useToast();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -108,6 +109,9 @@ export function CheckoutCard({ claimId, rewardPaise, feePaise, conversationId, o
             setMessage({ tone: "warn", text: t("checkout.cancelled") });
           },
         },
+        // Prefill the payer's own details so Razorpay doesn't ask again.
+        prefill: { name: user?.name ?? undefined, email: user?.email ?? undefined, contact: user?.phone ?? undefined },
+        notes: { claim_id: String(claimId) },
         theme: { color: "#1d4ed8" },
       });
       rzp.on("payment.failed", () => setMessage({ tone: "error", text: t("checkout.failed") }));

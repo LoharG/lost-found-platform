@@ -33,8 +33,8 @@ export default function PrivacyPage() {
 
       <h2 className="mt-4 text-xl font-semibold">Payments</h2>
       <p>
-        The ₹100 connection fee is processed by our payment provider (Razorpay). We store the order and payment identifiers, amount and status, never card or
-        bank details. Finder rewards are paid directly between users; we only record the agreed amount and the finder&apos;s confirmation. Payment records are
+        The ₹100 connection fee is processed by our payment provider (Razorpay). To process the payment, your name, email and phone number
+        (if saved) are passed to Razorpay. We store the order and payment identifiers, amount and status, never card or bank details. Finder rewards are paid directly between users; we only record the agreed amount and the finder&apos;s confirmation. Payment records are
         kept for accounting even if an account is deleted. [REVIEW: retention period required by tax law]
       </p>
 

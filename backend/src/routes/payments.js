@@ -49,6 +49,9 @@ function paymentRoutes({ connections, provider, config, limits }) {
     if (!state.settled && state.latest) {
       await connections.reconcileClaim(claimId);
       state = await connections.paymentState(claimId);
+    } else if (state.settled?.status === "refund_pending") {
+      await connections.reconcileRefund(claimId);
+      state = await connections.paymentState(claimId);
     }
     res.set("Cache-Control", "private, no-store").json({
       status: state.settled?.status || state.latest?.status || "none",
@@ -73,7 +76,8 @@ function paymentRoutes({ connections, provider, config, limits }) {
   }
 
   router.get("/payments/config", (req, res) => {
-    res.json({ provider: provider.name, testMode: provider.name === "test", keyId: provider.checkoutConfig().keyId, appName: "Lost & Found", currency: "INR", appUrl: config.appUrl });
+    const keyId = provider.checkoutConfig().keyId;
+    res.json({ provider: provider.name, testMode: provider.name === "test" || keyId.startsWith("rzp_test_"), keyId, appName: "Lost & Found", currency: "INR", appUrl: config.appUrl });
   });
 
   return router;

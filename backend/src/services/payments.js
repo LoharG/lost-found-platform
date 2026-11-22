@@ -43,6 +43,7 @@ function createRazorpayProvider({ keyId, keySecret, webhookSecret }) {
     listOrderPayments: async (orderId) => (await call("GET", `/orders/${encodeURIComponent(orderId)}/payments`)).items || [],
     capture: (paymentId, amount, currency) => call("POST", `/payments/${encodeURIComponent(paymentId)}/capture`, { amount, currency }),
     refund: (paymentId, amount) => call("POST", `/payments/${encodeURIComponent(paymentId)}/refund`, { amount }),
+    fetchRefund: (paymentId, refundId) => call("GET", `/payments/${encodeURIComponent(paymentId)}/refunds/${encodeURIComponent(refundId)}`),
     verifyCheckoutSignature: (orderId, paymentId, signature) => safeEqualHex(hmacHex(keySecret, `${orderId}|${paymentId}`), signature),
     verifyWebhookSignature: (rawBody, signature) => Boolean(webhookSecret) && safeEqualHex(hmacHex(webhookSecret, rawBody), signature),
     checkoutConfig: () => ({ provider: "razorpay", keyId }),
@@ -85,6 +86,9 @@ function createTestProvider({ pool, keySecret, webhookSecret }) {
     async refund(paymentId) {
       await pool.query("UPDATE test_provider_payments SET status = 'refunded' WHERE payment_id = $1", [paymentId]);
       return { id: id("rfnd"), payment_id: paymentId, status: "processed" };
+    },
+    async fetchRefund(paymentId, refundId) {
+      return { id: refundId, payment_id: paymentId, status: "processed" };
     },
     verifyCheckoutSignature: (orderId, paymentId, signature) => safeEqualHex(hmacHex(keySecret, `${orderId}|${paymentId}`), signature),
     verifyWebhookSignature: (rawBody, signature) => safeEqualHex(hmacHex(webhookSecret, rawBody), signature),

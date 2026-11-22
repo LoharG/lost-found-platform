@@ -249,9 +249,38 @@ function createConnectionService({ pool, provider, notifier, logger }) {
     if (!payment || !["paid", "refund_pending"].includes(payment.status)) throw new HttpError(409, "Only a paid connection can be refunded", "not_refundable");
     await pool.query("UPDATE connection_payments SET status = 'refund_pending', updated_at = now() WHERE id = $1 AND status = 'paid'", [payment.id]);
     const refund = await provider.refund(payment.provider_payment_id, payment.amount_paise);
+    await pool.query("UPDATE connection_payments SET provider_refund_id = $2 WHERE id = $1", [payment.id, refund.id]);
+    // An approved refund ends the paid connection immediately, even while the
+    // provider is still processing the money movement ("pending").
+    await withTransaction(pool, (db) => revokeAccess(db, payment.id, "refund_initiated"));
     if (refund.status === "processed") await markRefunded(payment.provider_payment_id, refund.id, "api");
-    else await pool.query("UPDATE connection_payments SET provider_refund_id = $2 WHERE id = $1", [payment.id, refund.id]);
-    return { status: refund.status === "processed" ? "refunded" : "refund_pending" };
+    return { status: refund.status === "processed" ? "refunded" : "refund_pending", refundId: refund.id };
+  }
+
+  async function revokeAccess(db, paymentRowId, reason) {
+    const ent = await db.query(
+      "UPDATE connection_entitlements SET revoked_at = now(), revoke_reason = $2 WHERE payment_id = $1 AND revoked_at IS NULL RETURNING conversation_id",
+      [paymentRowId, reason]
+    );
+    for (const row of ent.rows) {
+      await db.query("UPDATE conversations SET unlocked_at = NULL, locked_reason = 'refunded' WHERE id = $1 AND unlock_source = 'payment'", [row.conversation_id]);
+    }
+  }
+
+  // Settles refund_pending -> refunded by asking the provider (covers missed webhooks).
+  async function reconcileRefund(claimId) {
+    const { rows } = await pool.query(
+      "SELECT provider_payment_id, provider_refund_id FROM connection_payments WHERE claim_id = $1 AND status = 'refund_pending' AND provider_refund_id IS NOT NULL",
+      [claimId]
+    );
+    for (const row of rows) {
+      try {
+        const refund = await provider.fetchRefund(row.provider_payment_id, row.provider_refund_id);
+        if (refund.status === "processed") await markRefunded(row.provider_payment_id, row.provider_refund_id, "reconcile");
+      } catch (error) {
+        logger.warn({ err: { message: error.message } }, "Refund reconciliation failed");
+      }
+    }
   }
 
   async function markRefunded(providerPaymentId, refundId, source) {
@@ -263,21 +292,12 @@ function createConnectionService({ pool, provider, notifier, logger }) {
         "UPDATE connection_payments SET status = 'refunded', refunded_at = now(), provider_refund_id = COALESCE($2, provider_refund_id), updated_at = now() WHERE id = $1",
         [payment.id, refundId]
       );
-      const ent = await db.query(
-        "UPDATE connection_entitlements SET revoked_at = now(), revoke_reason = 'refunded' WHERE payment_id = $1 AND revoked_at IS NULL RETURNING conversation_id",
-        [payment.id]
-      );
-      for (const row of ent.rows) {
-        await db.query(
-          "UPDATE conversations SET unlocked_at = NULL, locked_reason = 'refunded' WHERE id = $1 AND unlock_source = 'payment'",
-          [row.conversation_id]
-        );
-      }
+      await revokeAccess(db, payment.id, "refunded");
       logger.info({ paymentId: payment.id, source }, "Connection fee refunded; access revoked");
     });
   }
 
-  return { startCheckout, confirmFromCheckout, cancelCheckout, handleWebhook, reconcileClaim, paymentState, refundPayment, applyPayment };
+  return { startCheckout, confirmFromCheckout, cancelCheckout, handleWebhook, reconcileClaim, reconcileRefund, paymentState, refundPayment, applyPayment };
 }
 
 module.exports = { createConnectionService, isUnlocked };
