@@ -20,13 +20,12 @@ function toHref(filters: Filters) {
   return `/items${params.size ? `?${params}` : ""}`;
 }
 
-// Selectable pill. Behaves as a radio inside a radiogroup (single choice).
+// Selectable pill (toggle button; one active per group).
 function Chip({ selected, onSelect, children }: { selected: boolean; onSelect: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
-      role="radio"
-      aria-checked={selected}
+      aria-pressed={selected}
       onClick={onSelect}
       className={clsx(
         "inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-95",
@@ -123,7 +122,7 @@ export function SearchFilters({ initial }: { initial: Filters }) {
           </Button>
         </div>
 
-        <div role="radiogroup" aria-label={t("browse.type")} className="mt-3 flex flex-wrap gap-2">
+        <div role="group" aria-label={t("browse.type")} className="mt-3 flex flex-wrap gap-2">
           {(["", "lost", "found"] as const).map((type) => (
             <Chip key={type || "all"} selected={(values.type || "") === type} onSelect={() => choose("type", type)}>
               {type ? t(`type.${type}`) : t("type.all")}
@@ -132,7 +131,7 @@ export function SearchFilters({ initial }: { initial: Filters }) {
         </div>
 
         <div id="more-filters" hidden={!expanded} className="menu-in mt-4 border-t border-border pt-4">
-          <div role="radiogroup" aria-label={t("browse.category")} className="flex flex-wrap gap-2">
+          <div role="group" aria-label={t("browse.category")} className="flex flex-wrap gap-2">
             <Chip selected={!values.category} onSelect={() => choose("category", "")}>
               {t("category.any")}
             </Chip>
