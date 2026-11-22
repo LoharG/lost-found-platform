@@ -77,12 +77,12 @@ test("wrong code shows attempts left; expired code offers resend; change email r
   const code = await latestCode(email);
   const wrong = code === "000000" ? "111111" : "000000";
   await page.getByLabel("6-digit code").pressSequentially(wrong);
-  await expect(page.getByRole("alert")).toContainText("That code is incorrect. 4 attempts left.");
+  await expect(page.getByRole("alert").filter({ hasText: "That code is incorrect. 4 attempts left." })).toBeVisible();
   await expect(page.getByLabel("6-digit code")).toHaveValue("");
 
   sql(`UPDATE otp_codes SET expires_at = now() - interval '1 second' WHERE email = '${email}'`);
   await page.getByLabel("6-digit code").pressSequentially(code);
-  await expect(page.getByRole("alert")).toContainText("This code has expired. Request a new code.");
+  await expect(page.getByRole("alert").filter({ hasText: "This code has expired. Request a new code." })).toBeVisible();
 
   await page.getByRole("button", { name: "Use a different email" }).click();
   await expect(page.getByLabel("Email address")).toBeVisible();
@@ -112,7 +112,7 @@ test("resend countdown, resend supersedes the old code, and cooldown is enforced
   expect(second).not.toBe("");
   if (first !== second) {
     await page.getByLabel("6-digit code").pressSequentially(first);
-    await expect(page.getByRole("alert")).toContainText(/newer code was sent|no longer valid|incorrect/);
+    await expect(page.getByRole("alert").filter({ hasText: /newer code was sent|no longer valid|incorrect/ })).toBeVisible();
   }
   await page.getByLabel("6-digit code").pressSequentially(second);
   await expect(page).toHaveURL("/");
@@ -126,7 +126,7 @@ test("delivery-service failure and unsafe next parameter are handled", async ({ 
   await page.goto("/login");
   await page.getByLabel("Email address").fill(unique("fail"));
   await page.getByRole("button", { name: "Email me a code" }).click();
-  await expect(page.getByRole("alert")).toContainText("We couldn't send the email right now");
+  await expect(page.getByRole("alert").filter({ hasText: "We couldn't send the email right now" })).toBeVisible();
   await expect(page.getByLabel("Email address")).toBeVisible();
   await page.unroute("**/api/auth/email/request");
 

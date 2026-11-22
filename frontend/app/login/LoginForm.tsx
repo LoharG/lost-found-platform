@@ -26,7 +26,8 @@ function useCountdown(target: string | null) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [target]);
-  return target ? Math.max(0, Math.ceil((new Date(target).getTime() - now) / 1000)) : 0;
+  // Round down so small clock differences never show more than the real limit (e.g. "5:01").
+  return target ? Math.max(0, Math.floor((new Date(target).getTime() - now) / 1000)) : 0;
 }
 
 export function LoginForm() {

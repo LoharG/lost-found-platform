@@ -72,7 +72,7 @@ function NavLinks({ links, mobile = false }: { links: { href: string; label: str
             key={link.href}
             href={link.href}
             aria-current={isCurrent(link.href) ? "page" : undefined}
-            className="nav-link rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:text-primary aria-[current=page]:text-primary"
+            className="nav-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:text-primary aria-[current=page]:text-primary"
           >
             {link.label}
           </Link>
@@ -93,7 +93,7 @@ function StaticLinks({ links, mobile = false }: { links: { href: string; label: 
             </Link>
           </li>
         ) : (
-          <Link key={link.href} href={link.href} className="nav-link rounded-lg px-3 py-2 text-sm font-medium hover:text-primary">
+          <Link key={link.href} href={link.href} className="nav-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium hover:text-primary">
             {link.label}
           </Link>
         )
@@ -143,12 +143,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2">
-        <Link href="/" className="flex min-h-11 items-center gap-2 text-lg font-bold">
+        <Link href="/" className="flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap text-lg font-bold">
           <Search className="size-5 text-primary" aria-hidden />
           {t("app.name")}
         </Link>
 
-        <nav aria-label="Primary" className="ml-4 hidden items-center gap-1 md:flex">
+        <nav aria-label="Primary" className="ml-4 hidden items-center gap-1 xl:flex">
           <Suspense fallback={<StaticLinks links={allLinks} />}>
             <NavLinks links={allLinks} />
           </Suspense>
@@ -157,7 +157,7 @@ export function Header() {
         <div className="ml-auto flex items-center gap-1">
           <Link
             href="/report"
-            className="hidden min-h-11 items-center gap-1 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-contrast shadow-sm transition-[background-color,box-shadow,transform] hover:bg-primary-hover hover:shadow-md active:translate-y-px sm:inline-flex"
+            className="hidden min-h-11 items-center gap-1 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-semibold text-primary-contrast shadow-sm transition-[background-color,box-shadow,transform] hover:bg-primary-hover hover:shadow-md active:translate-y-px sm:inline-flex"
           >
             <Plus className="size-4" aria-hidden />
             {t("nav.report")}
@@ -178,7 +178,7 @@ export function Header() {
               </Link>
             </>
           )}
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-1 xl:flex">
             <ThemeToggle />
             <LocaleSwitcher />
             {!loading &&
@@ -193,9 +193,9 @@ export function Header() {
                         {user.displayName.charAt(0).toUpperCase()}
                       </span>
                     )}
-                    <span>{t("nav.account")}</span>
+                    <span className="whitespace-nowrap">{t("nav.account")}</span>
                   </Link>
-                  <button type="button" onClick={logout} className="min-h-11 rounded-lg px-3 text-sm font-medium hover:bg-surface-muted">
+                  <button type="button" onClick={logout} className="min-h-11 whitespace-nowrap rounded-lg px-3 text-sm font-medium hover:bg-surface-muted">
                     {t("nav.signOut")}
                   </button>
                 </>
@@ -208,7 +208,7 @@ export function Header() {
           <button
             ref={toggleRef}
             type="button"
-            className="inline-flex size-11 items-center justify-center rounded-lg hover:bg-surface-muted md:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-lg hover:bg-surface-muted xl:hidden"
             aria-expanded={open}
             aria-controls="mobile-menu"
             onClick={() => setOpen((value) => !value)}
@@ -220,7 +220,7 @@ export function Header() {
       </div>
 
       {open && (
-        <nav id="mobile-menu" aria-label="Mobile" className="menu-in border-t border-border bg-surface px-4 pb-4 md:hidden">
+        <nav id="mobile-menu" aria-label="Mobile" className="menu-in border-t border-border bg-surface px-4 pb-4 xl:hidden">
           <ul className="flex flex-col py-2">
             <Suspense fallback={<StaticLinks links={[{ href: "/report", label: t("nav.report") }, ...allLinks]} mobile />}>
               <NavLinks links={[{ href: "/report", label: t("nav.report") }, ...allLinks]} mobile />
