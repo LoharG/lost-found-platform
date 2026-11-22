@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import AxeBuilder from "@axe-core/playwright";
-import { createListing, expect, newUser, persona, RUN, signIn, test } from "./fixtures";
+import { createListing, expect, newUser, openMenuIfCollapsed, persona, RUN, signIn, test } from "./fixtures";
 
 // ---------------------------------------------------------------------------
 // 7. Logout and session persistence across an API restart
@@ -8,7 +8,7 @@ import { createListing, expect, newUser, persona, RUN, signIn, test } from "./fi
 test("logout ends the session; sessions survive an API restart", async ({ browser }) => {
   const { context, page } = await newUser(browser, persona("session"));
   await page.goto("/account");
-  await expect(page.getByRole("heading", { name: "My account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "My account", exact: true })).toBeVisible();
 
   if (process.env.E2E_COMPOSE_PROJECT !== "none") {
     execSync(`docker compose -p ${process.env.E2E_COMPOSE_PROJECT || "lftest"} restart backend`, { cwd: "..", stdio: "ignore" });
@@ -19,7 +19,8 @@ test("logout ends the session; sessions survive an API restart", async ({ browse
   }
 
   await page.reload();
-  await page.getByRole("button", { name: "Sign out" }).first().click();
+  await openMenuIfCollapsed(page);
+  await page.getByRole("button", { name: "Sign out" }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL("/");
   expect((await (await context.request.get("/api/auth/me")).json()).loggedIn).toBe(false);
   await page.goto("/account");
@@ -103,11 +104,12 @@ test("keyboard-only: skip link, search, report form and contact", async ({ brows
   await expect(page.getByLabel("I found something")).toBeChecked();
   await page.keyboard.press("Tab");
   await page.keyboard.type(`Keyboard phone ${RUN}`);
-  await page.keyboard.press("Tab"); // category
-  await page.keyboard.press("Tab"); // date
-  await page.keyboard.press("Tab"); // location
-  await page.keyboard.type("Deccan Gymkhana");
+  await page.keyboard.press("Tab"); // category (native select: arrow keys choose)
+  await expect(page.getByLabel("Category")).toBeFocused();
+  // Native <select> keyboard behaviour differs per OS; choose the option directly.
   await page.getByLabel("Category").selectOption("phone");
+  await page.getByLabel("Where?").focus(); // date input has one tab stop per segment in Chromium
+  await page.keyboard.type("Deccan Gymkhana");
   await page.getByRole("button", { name: "Publish listing" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/items\/\d+$/);
@@ -117,7 +119,7 @@ test("keyboard-only: skip link, search, report form and contact", async ({ brows
   await page.getByRole("button", { name: "Publish listing" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Please fix the highlighted fields.")).toBeVisible();
-  await expect(page.locator("[tabindex='-1']").filter({ hasText: "Please fix the highlighted fields." })).toBeFocused();
+  await expect(page.locator("form div[tabindex='-1']").filter({ hasText: "Please fix the highlighted fields." })).toBeFocused();
 
   // Contact via keyboard from another account.
   const other = await newUser(browser, persona("kb-contact"));

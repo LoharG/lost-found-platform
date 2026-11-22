@@ -89,10 +89,13 @@ function ConversationView({ id }: { id: string }) {
   async function toggleSharing(share: boolean) {
     setSharing(true);
     setError(null);
+    // Optimistic: reflect the choice immediately, roll back if it fails.
+    setData((current) => (current ? { ...current, sharingMyPhone: share } : current));
     try {
       await api(`/conversations/${id}/phone-sharing`, { method: "POST", json: { share } });
       await load();
     } catch (err) {
+      setData((current) => (current ? { ...current, sharingMyPhone: !share } : current));
       setError(errorMessage(err, t));
     } finally {
       setSharing(false);

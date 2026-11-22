@@ -53,4 +53,11 @@ export async function pngFixture(page: Page) {
   return page.locator("div").screenshot({ type: "png" });
 }
 
+// On small screens the language switcher and account actions live in the
+// collapsible menu; open it when present.
+export async function openMenuIfCollapsed(page: Page) {
+  const toggle = page.getByRole("button", { name: "Menu" });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+}
+
 export const test = base;

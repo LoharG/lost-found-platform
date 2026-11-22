@@ -1,4 +1,4 @@
-import { apiCall, createListing, expect, newUser, persona, pngFixture, RUN, test } from "./fixtures";
+import { apiCall, createListing, expect, newUser, openMenuIfCollapsed, persona, pngFixture, RUN, test } from "./fixtures";
 
 test.describe.configure({ mode: "serial" });
 
@@ -26,10 +26,11 @@ test("visitor finds a listing beyond the first page with search, filters and pag
   // Paginate to the last page: the oldest listing is there.
   const pager = page.getByRole("navigation", { name: "Pagination" });
   await expect(pager).toBeVisible();
-  let guard = 0;
-  while ((await page.getByText(marker).count()) === 0 && guard++ < 10) {
+  const totalText = await pager.getByText(/Page 1 of \d+/).innerText();
+  const totalPages = Number(totalText.match(/of (\d+)/)![1]);
+  for (let n = 2; n <= totalPages && (await page.getByText(marker).count()) === 0; n++) {
     await pager.getByRole("link", { name: "Next" }).click();
-    await page.waitForLoadState("networkidle");
+    await expect(pager.getByText(`Page ${n} of ${totalPages}`)).toBeVisible();
   }
   await expect(page.getByRole("link", { name: new RegExp(marker) })).toBeVisible();
 
@@ -255,11 +256,11 @@ test("a reported listing removed by a moderator disappears publicly with its ima
 
   const mod = await newUser(browser, persona("moderator", "moderator"));
   await mod.page.goto("/moderation");
-  const entry = mod.page.locator("div", { has: mod.page.getByRole("link", { name: `Cheap watches for sale ${RUN}` }) }).last();
+  const entry = mod.page.getByRole("article", { name: `Cheap watches for sale ${RUN}` });
   await expect(entry.getByText("This is an advert")).toBeVisible();
   await entry.getByLabel("Reason for decision (recorded in the audit log)").fill("Commercial spam");
   await entry.getByRole("button", { name: "Remove listing" }).click();
-  await expect(mod.page.getByText(/remove listing #\d+ — Commercial spam/)).toBeVisible();
+  await expect(mod.page.getByText(`remove listing #${item.id} — Commercial spam`)).toBeVisible();
 
   const anon = await browser.newContext();
   const anonPage = await anon.newPage();
@@ -308,12 +309,15 @@ test("double-submitted claims and messages stay consistent; Hindi locale formats
   // Hindi
   const page = reporter.page;
   await page.goto(`/items/${item.id}`);
-  await page.getByLabel("Language").first().selectOption("hi");
+  await openMenuIfCollapsed(page);
+  await page.getByLabel("Language").filter({ visible: true }).first().selectOption("hi");
   await expect(page.locator("html")).toHaveAttribute("lang", "hi");
   await expect(page.getByText("मिलने की तारीख़")).toBeVisible();
   await expect(page.getByText("5 मार्च 2026")).toBeVisible();
   await page.goto("/items?type=found");
   await expect(page.getByRole("heading", { level: 1, name: "मिली चीज़ें" })).toBeVisible();
-  await page.getByLabel("भाषा").first().selectOption("en");
+  const hindiMenu = page.getByRole("button", { name: "मेनू" });
+  if ((await hindiMenu.isVisible()) && (await hindiMenu.getAttribute("aria-expanded")) === "false") await hindiMenu.click();
+  await page.getByLabel("भाषा").filter({ visible: true }).first().selectOption("en");
   for (const c of [reporter.context, a.context, b.context]) await c.close();
 });

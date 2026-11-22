@@ -17,6 +17,6 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] }, grepInvert: /@mobile-only/ },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, grep: /@responsive|@mobile-only/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, grepInvert: /@desktop-only/ },
   ],
 });
