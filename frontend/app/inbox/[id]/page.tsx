@@ -19,7 +19,15 @@ import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { ClaimStatus, Item } from "@/lib/types";
 
-type Message = { id: number; body: string; mine: boolean; senderDeleted: boolean; createdAt: string; clientId: string; pending?: boolean };
+type Message = {
+  id: number;
+  body: string;
+  mine: boolean;
+  senderDeleted: boolean;
+  createdAt: string;
+  clientId: string;
+  pending?: boolean;
+};
 type Conversation = {
   id: number;
   role: "reporter" | "participant";
@@ -31,7 +39,11 @@ type Conversation = {
   lockedReason: string | null;
   unlockSource: "grandfathered" | "payment" | null;
   viewerRole: "owner" | "finder" | null;
-  claims: (MatchClaim & { status: ClaimStatus; answer: string; createdAt: string })[];
+  claims: (MatchClaim & {
+    status: ClaimStatus;
+    answer: string;
+    createdAt: string;
+  })[];
 };
 
 function ConversationView({ id }: { id: string }) {
@@ -57,19 +69,23 @@ function ConversationView({ id }: { id: string }) {
         (err) => {
           if (err instanceof ApiError && err.status === 404) setNotFound(true);
           else setError(errorMessage(err, t));
-        }
+        },
       ),
-    [id, t, refreshCounts]
+    [id, t, refreshCounts],
   );
 
   useEffect(() => {
     load();
-    const timer = setInterval(() => document.visibilityState === "visible" && load(), 10000);
+    const timer = setInterval(
+      () => document.visibilityState === "visible" && load(),
+      10000,
+    );
     return () => clearInterval(timer);
   }, [load]);
 
   useEffect(() => {
-    if (data) document.title = `${data.counterpart.displayName} · ${t("app.name")}`;
+    if (data)
+      document.title = `${data.counterpart.displayName} · ${t("app.name")}`;
   }, [data, t]);
 
   useEffect(() => {
@@ -84,10 +100,27 @@ function ConversationView({ id }: { id: string }) {
     setSending(true);
     setError(null);
     // Optimistic append; the clientId makes retries idempotent on the server.
-    setData({ ...data, messages: [...data.messages, { id: -Date.now(), body, mine: true, senderDeleted: false, createdAt: new Date().toISOString(), clientId, pending: true }] });
+    setData({
+      ...data,
+      messages: [
+        ...data.messages,
+        {
+          id: -Date.now(),
+          body,
+          mine: true,
+          senderDeleted: false,
+          createdAt: new Date().toISOString(),
+          clientId,
+          pending: true,
+        },
+      ],
+    });
     setDraft("");
     try {
-      await api(`/conversations/${id}/messages`, { method: "POST", json: { body, clientId } });
+      await api(`/conversations/${id}/messages`, {
+        method: "POST",
+        json: { body, clientId },
+      });
       await load();
     } catch (err) {
       setError(errorMessage(err, t));
@@ -102,13 +135,20 @@ function ConversationView({ id }: { id: string }) {
     setSharing(true);
     setError(null);
     // Optimistic: reflect the choice immediately, roll back if it fails.
-    setData((current) => (current ? { ...current, sharingMyPhone: share } : current));
+    setData((current) =>
+      current ? { ...current, sharingMyPhone: share } : current,
+    );
     try {
-      await api(`/conversations/${id}/phone-sharing`, { method: "POST", json: { share } });
+      await api(`/conversations/${id}/phone-sharing`, {
+        method: "POST",
+        json: { share },
+      });
       toast(share ? t("toast.phoneShared") : t("toast.phoneHidden"), "info");
       await load();
     } catch (err) {
-      setData((current) => (current ? { ...current, sharingMyPhone: !share } : current));
+      setData((current) =>
+        current ? { ...current, sharingMyPhone: !share } : current,
+      );
       setError(errorMessage(err, t));
     } finally {
       setSharing(false);
@@ -116,7 +156,12 @@ function ConversationView({ id }: { id: string }) {
   }
 
   if (notFound) return <Alert tone="error">{t("inbox.notFound")}</Alert>;
-  if (!data) return error ? <Alert tone="error">{error}</Alert> : <PanelSkeleton label={t("common.loading")} />;
+  if (!data)
+    return error ? (
+      <Alert tone="error">{error}</Alert>
+    ) : (
+      <PanelSkeleton label={t("common.loading")} />
+    );
 
   const accepted = data.claims.find((c) => c.status === "accepted") ?? null;
 
@@ -130,46 +175,94 @@ function ConversationView({ id }: { id: string }) {
           </span>
         </Alert>
         {data.locked ? (
-          <LockedChat data={data} feePaise={pricing?.connectionFeePaise ?? 10000} onPaid={load} />
+          <LockedChat
+            data={data}
+            feePaise={pricing?.connectionFeePaise ?? 10000}
+            onPaid={load}
+          />
         ) : (
           <>
-        {data.unlockSource === "grandfathered" && <p className="text-xs text-muted">{t("chat.grandfathered")}</p>}
-        <ol ref={listRef} className="flex max-h-[60vh] min-h-48 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface p-4" aria-live="polite">
-          {data.messages.map((m) => (
-            <li key={m.clientId} className={clsx("flex", m.mine ? "justify-end" : "justify-start")}>
-              <div className={clsx("max-w-[85%] rounded-2xl px-3 py-2 text-sm", m.mine ? "bg-primary text-primary-contrast" : "bg-surface-muted")}>
-                <span className="sr-only">{m.mine ? t("inbox.you") : m.senderDeleted ? t("inbox.deletedUser") : data.counterpart.displayName}: </span>
-                <p className="whitespace-pre-line break-words">{m.body}</p>
-                <p className={clsx("mt-1 text-[11px]", m.mine ? "opacity-80" : "text-muted")}>{m.pending ? t("form.saving") : formatDateTime(m.createdAt, locale)}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-        {error && <Alert tone="error">{error}</Alert>}
-        {data.item.available ? (
-          <form onSubmit={send} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <label htmlFor="composer" className="sr-only">
-              {t("inbox.placeholder")}
-            </label>
-            <Textarea
-              id="composer"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={t("inbox.placeholder")}
-              maxLength={2000}
-              rows={2}
-              className="flex-1"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
-              }}
-            />
-            <Button type="submit" loading={sending} disabled={!draft.trim()} disabledReason={t("disabled.needMessage")}>
-              {t("inbox.send")}
-            </Button>
-          </form>
-        ) : (
-          <Alert tone="info">{t("inbox.closed")}</Alert>
-        )}
+            {data.unlockSource === "grandfathered" && (
+              <p className="text-xs text-muted">{t("chat.grandfathered")}</p>
+            )}
+            <ol
+              ref={listRef}
+              className="flex max-h-[60vh] min-h-48 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface p-4"
+              aria-live="polite"
+            >
+              {data.messages.map((m) => (
+                <li
+                  key={m.clientId}
+                  className={clsx(
+                    "flex",
+                    m.mine ? "justify-end" : "justify-start",
+                  )}
+                >
+                  <div
+                    className={clsx(
+                      "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
+                      m.mine
+                        ? "bg-primary text-primary-contrast"
+                        : "bg-surface-muted",
+                    )}
+                  >
+                    <span className="sr-only">
+                      {m.mine
+                        ? t("inbox.you")
+                        : m.senderDeleted
+                          ? t("inbox.deletedUser")
+                          : data.counterpart.displayName}
+                      :{" "}
+                    </span>
+                    <p className="whitespace-pre-line break-words">{m.body}</p>
+                    <p
+                      className={clsx(
+                        "mt-1 text-[11px]",
+                        m.mine ? "opacity-80" : "text-muted",
+                      )}
+                    >
+                      {m.pending
+                        ? t("form.saving")
+                        : formatDateTime(m.createdAt, locale)}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {error && <Alert tone="error">{error}</Alert>}
+            {data.item.available ? (
+              <form
+                onSubmit={send}
+                className="flex flex-col gap-2 sm:flex-row sm:items-end"
+              >
+                <label htmlFor="composer" className="sr-only">
+                  {t("inbox.placeholder")}
+                </label>
+                <Textarea
+                  id="composer"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={t("inbox.placeholder")}
+                  maxLength={2000}
+                  rows={2}
+                  className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                      (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                  }}
+                />
+                <Button
+                  type="submit"
+                  loading={sending}
+                  disabled={!draft.trim()}
+                  disabledReason={t("disabled.needMessage")}
+                >
+                  {t("inbox.send")}
+                </Button>
+              </form>
+            ) : (
+              <Alert tone="info">{t("inbox.closed")}</Alert>
+            )}
           </>
         )}
       </section>
@@ -177,9 +270,16 @@ function ConversationView({ id }: { id: string }) {
       <aside className="flex flex-col gap-4">
         <Card>
           <p className="text-xs text-muted">
-            {data.role === "reporter" ? t("inbox.withRole.reporter") : t("inbox.withRole.participant", { name: data.item.reporter.displayName })}
+            {data.role === "reporter"
+              ? t("inbox.withRole.reporter")
+              : t("inbox.withRole.participant", {
+                  name: data.item.reporter.displayName,
+                })}
           </p>
-          <Link href={`/items/${data.item.id}`} className="mt-1 block font-semibold text-primary underline-offset-4 hover:underline">
+          <Link
+            href={`/items/${data.item.id}`}
+            className="mt-1 block font-semibold text-primary underline-offset-4 hover:underline"
+          >
             {data.item.title}
           </Link>
           <p className="text-sm text-muted">{data.item.location}</p>
@@ -190,35 +290,42 @@ function ConversationView({ id }: { id: string }) {
         )}
 
         {!data.locked && (
-        <Card>
-          {data.counterpart.phone && (
-            <p className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <Phone className="size-4" aria-hidden />
-              {t("inbox.theirPhone", { name: data.counterpart.displayName, phone: data.counterpart.phone })}
-            </p>
-          )}
-          {user?.phone ? (
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                className="mt-1 size-5"
-                checked={data.sharingMyPhone}
-                disabled={sharing}
-                onChange={(e) => toggleSharing(e.target.checked)}
-              />
-              <span>
-                <span className="block text-sm font-medium">{t("inbox.sharePhone")}</span>
-                <span className="block text-xs text-muted">{t("inbox.sharePhoneHint")}</span>
-              </span>
-            </label>
-          ) : (
-            <p className="text-sm text-muted">
-              <Link href="/account" className="text-primary underline">
-                {t("inbox.noPhone")}
-              </Link>
-            </p>
-          )}
-        </Card>
+          <Card>
+            {data.counterpart.phone && (
+              <p className="mb-3 flex items-center gap-2 text-sm font-medium">
+                <Phone className="size-4" aria-hidden />
+                {t("inbox.theirPhone", {
+                  name: data.counterpart.displayName,
+                  phone: data.counterpart.phone,
+                })}
+              </p>
+            )}
+            {user?.phone ? (
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-5"
+                  checked={data.sharingMyPhone}
+                  disabled={sharing}
+                  onChange={(e) => toggleSharing(e.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    {t("inbox.sharePhone")}
+                  </span>
+                  <span className="block text-xs text-muted">
+                    {t("inbox.sharePhoneHint")}
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-sm text-muted">
+                <Link href="/account" className="text-primary underline">
+                  {t("inbox.noPhone")}
+                </Link>
+              </p>
+            )}
+          </Card>
         )}
 
         {data.claims.length > 0 && (
@@ -227,13 +334,26 @@ function ConversationView({ id }: { id: string }) {
             <ul className="mt-2 flex flex-col gap-2">
               {data.claims.map((claim) => (
                 <li key={claim.id} className="text-sm">
-                  <Badge tone={claim.status === "accepted" ? "success" : claim.status === "pending" ? "warn" : "neutral"}>{t(`claim.status.${claim.status}`)}</Badge>
+                  <Badge
+                    tone={
+                      claim.status === "accepted"
+                        ? "success"
+                        : claim.status === "pending"
+                          ? "warn"
+                          : "neutral"
+                    }
+                  >
+                    {t(`claim.status.${claim.status}`)}
+                  </Badge>
                   <p className="mt-1">{claim.answer}</p>
                 </li>
               ))}
             </ul>
             {data.role === "reporter" && (
-              <Link href={`/items/${data.item.id}`} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary">
+              <Link
+                href={`/items/${data.item.id}`}
+                className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary"
+              >
                 {t("owner.claims")} →
               </Link>
             )}
@@ -245,7 +365,15 @@ function ConversationView({ id }: { id: string }) {
 }
 
 // Shown instead of the chat until the owner pays the connection fee.
-function LockedChat({ data, feePaise, onPaid }: { data: Conversation; feePaise: number; onPaid: () => void }) {
+function LockedChat({
+  data,
+  feePaise,
+  onPaid,
+}: {
+  data: Conversation;
+  feePaise: number;
+  onPaid: () => void;
+}) {
   const { t, locale } = useI18n();
   const fee = inr(feePaise, locale);
   const accepted = data.claims.find((c) => c.status === "accepted");
@@ -267,7 +395,12 @@ function LockedChat({ data, feePaise, onPaid }: { data: Conversation; feePaise: 
         </p>
       </Card>
       {accepted && data.viewerRole === "owner" && accepted.agreement && (
-        <CheckoutCard claimId={accepted.id} rewardPaise={accepted.agreement.rewardPaise} feePaise={accepted.agreement.feePaise} onPaid={onPaid} />
+        <CheckoutCard
+          claimId={accepted.id}
+          rewardPaise={accepted.agreement.rewardPaise}
+          feePaise={accepted.agreement.feePaise}
+          onPaid={onPaid}
+        />
       )}
     </div>
   );
@@ -278,7 +411,10 @@ export default function ConversationPage() {
   const params = useParams<{ id: string }>();
   return (
     <div>
-      <Link href="/inbox" className="mb-4 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary">
+      <Link
+        href="/inbox"
+        className="mb-4 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary"
+      >
         <ArrowLeft className="size-4" aria-hidden />
         {t("inbox.title")}
       </Link>

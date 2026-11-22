@@ -28,6 +28,13 @@ x-api-env: &api-env
   LEGACY_UPLOADS_DIR: /app/uploads
   ENABLE_TEST_AUTH: ${ENABLE_TEST_AUTH:-}
   RATE_LIMIT_MULTIPLIER: ${RATE_LIMIT_MULTIPLIER:-1}
+  # Payments: local test-mode provider by default (no real money). Set
+  # PAYMENT_PROVIDER=razorpay with RAZORPAY_* test keys to use Razorpay test mode.
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-test}
+  ALLOW_TEST_PAYMENTS: ${ALLOW_TEST_PAYMENTS:-true}
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:

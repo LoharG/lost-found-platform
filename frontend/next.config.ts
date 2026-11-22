@@ -9,11 +9,13 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' https://checkout.razorpay.com${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.googleusercontent.com",
+  "img-src 'self' data: blob: https://*.googleusercontent.com https://*.razorpay.com",
   "font-src 'self'",
-  "connect-src 'self'",
+  "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com",
+  // Razorpay Standard Checkout renders in an iframe.
+  "frame-src https://api.razorpay.com https://checkout.razorpay.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

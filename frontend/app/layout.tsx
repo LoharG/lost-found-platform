@@ -61,6 +61,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <Link href="/terms" className="underline-offset-4 hover:underline">
                     {t("footer.terms")}
                   </Link>
+                  <Link href="/pricing" className="underline-offset-4 hover:underline">
+                    {t("reward.howPricingWorks")}
+                  </Link>
                 </nav>
               </div>
             </footer>

@@ -2,7 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ImagePlus, LocateFixed, PackageCheck, PackageSearch, X } from "lucide-react";
+import {
+  Check,
+  ImagePlus,
+  LocateFixed,
+  PackageCheck,
+  PackageSearch,
+  X,
+} from "lucide-react";
 import { flashToast } from "./Toaster";
 import { errorMessage } from "./AuthProvider";
 import { Alert, Button, Field, Input, Select, Textarea } from "./ui";
@@ -29,7 +36,13 @@ type Draft = {
   longitude: string;
 };
 
-export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultType?: ItemType }) {
+export function ItemForm({
+  item,
+  defaultType = "lost",
+}: {
+  item?: Item;
+  defaultType?: ItemType;
+}) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const editing = Boolean(item);
@@ -61,21 +74,40 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
   const feePaise = pricing?.connectionFeePaise ?? 10000;
   // Lost-item owners agree to the reward when publishing, and again if the
   // category of an existing lost listing changes.
-  const needsAck = draft.type === "lost" && (!editing || draft.category !== item?.category);
+  const needsAck =
+    draft.type === "lost" && (!editing || draft.category !== item?.category);
 
-  const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
-  useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
+  const previews = useMemo(
+    () => files.map((file) => URL.createObjectURL(file)),
+    [files],
+  );
+  useEffect(
+    () => () => previews.forEach((url) => URL.revokeObjectURL(url)),
+    [previews],
+  );
 
-  const existing = (item?.images ?? []).filter((image) => !removeIds.includes(image.id));
-  const set = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const value = event.target.value;
-    if ((key === "category" || key === "type") && rewardAck) {
-      setRewardAck(false);
-      const next = key === "category" ? rewardOf(pricing, value) : rewardPaise;
-      if (next) setAckNotice(t("reward.lost.ackReset", { amount: inr(next, locale) }));
-    }
-    setDraft((current) => ({ ...current, [key]: value }));
-  };
+  const existing = (item?.images ?? []).filter(
+    (image) => !removeIds.includes(image.id),
+  );
+  const set =
+    (key: keyof Draft) =>
+    (
+      event: React.ChangeEvent<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >,
+    ) => {
+      const value = event.target.value;
+      if ((key === "category" || key === "type") && rewardAck) {
+        setRewardAck(false);
+        const next =
+          key === "category" ? rewardOf(pricing, value) : rewardPaise;
+        if (next)
+          setAckNotice(
+            t("reward.lost.ackReset", { amount: inr(next, locale) }),
+          );
+      }
+      setDraft((current) => ({ ...current, [key]: value }));
+    };
 
   function addFiles(list: FileList | null) {
     setPhotoError(null);
@@ -105,10 +137,14 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocating(false);
-        setDraft((current) => ({ ...current, latitude: position.coords.latitude.toFixed(6), longitude: position.coords.longitude.toFixed(6) }));
+        setDraft((current) => ({
+          ...current,
+          latitude: position.coords.latitude.toFixed(6),
+          longitude: position.coords.longitude.toFixed(6),
+        }));
       },
       () => setLocating(false),
-      { timeout: 10000 }
+      { timeout: 10000 },
     );
   }
 
@@ -139,24 +175,43 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
     for (const file of files) form.append("images", file);
 
     try {
-      const res = await api<{ item: Item }>(editing ? `/items/${item!.id}` : "/items", { method: editing ? "PATCH" : "POST", form });
-      flashToast(reviewRequested ? t("toast.sentForReview") : editing ? t("toast.saved") : t("toast.published"));
+      const res = await api<{ item: Item }>(
+        editing ? `/items/${item!.id}` : "/items",
+        { method: editing ? "PATCH" : "POST", form },
+      );
+      flashToast(
+        reviewRequested
+          ? t("toast.sentForReview")
+          : editing
+            ? t("toast.saved")
+            : t("toast.published"),
+      );
       router.push(`/items/${res.item.id}`);
       router.refresh();
     } catch (error) {
       const fields = fieldErrors(error);
       if (error instanceof ApiError && error.code === "contact_detected") {
-        const flagged = (error.details.fields || {}) as Record<string, string[]>;
-        for (const key of Object.keys(flagged)) fields[key] = t("form.contactDetected");
+        const flagged = (error.details.fields || {}) as Record<
+          string,
+          string[]
+        >;
+        for (const key of Object.keys(flagged))
+          fields[key] = t("form.contactDetected");
         setNeedsReview(true);
       }
-      if (error instanceof ApiError && (error.code === "pricing_changed" || error.code === "terms_required")) {
+      if (
+        error instanceof ApiError &&
+        (error.code === "pricing_changed" || error.code === "terms_required")
+      ) {
         setRewardAck(false);
         fields.acceptRewardTerms = error.message;
       }
       setErrors(fields);
-      setFormError(Object.keys(fields).length ? t("form.errors") : errorMessage(error, t));
-      if (error instanceof ApiError && error.code === "invalid_image") setPhotoError(error.message);
+      setFormError(
+        Object.keys(fields).length ? t("form.errors") : errorMessage(error, t),
+      );
+      if (error instanceof ApiError && error.code === "invalid_image")
+        setPhotoError(error.message);
       setSaving(false);
       requestAnimationFrame(() => errorRef.current?.focus());
     }
@@ -182,11 +237,20 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
                   key={type}
                   className="group relative flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border-2 border-border bg-surface px-4 py-3 transition-[border-color,background-color,transform] duration-150 hover:border-primary/60 active:scale-[0.99] has-[:checked]:border-primary has-[:checked]:bg-info-bg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary"
                 >
-                  <input type="radio" name="type" value={type} checked={draft.type === type} onChange={set("type")} className="peer sr-only" />
+                  <input
+                    type="radio"
+                    name="type"
+                    value={type}
+                    checked={draft.type === type}
+                    onChange={set("type")}
+                    className="peer sr-only"
+                  />
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-muted transition-colors peer-checked:bg-primary peer-checked:text-primary-contrast">
                     <Icon className="size-5" aria-hidden />
                   </span>
-                  <span className="font-semibold">{t(`form.type.${type}`)}</span>
+                  <span className="font-semibold">
+                    {t(`form.type.${type}`)}
+                  </span>
                   <span className="absolute right-3 top-3 flex size-6 scale-50 items-center justify-center rounded-full bg-primary text-primary-contrast opacity-0 transition-[opacity,transform] duration-150 peer-checked:scale-100 peer-checked:opacity-100">
                     <Check className="size-4" aria-hidden />
                   </span>
@@ -197,14 +261,32 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
         </fieldset>
       )}
 
-      <Field label={t("form.itemTitle")} hint={t("form.itemTitle.hint")} error={errors.title}>
-        {(props) => <Input {...props} value={draft.title} onChange={set("title")} required maxLength={120} autoComplete="off" />}
+      <Field
+        label={t("form.itemTitle")}
+        hint={t("form.itemTitle.hint")}
+        error={errors.title}
+      >
+        {(props) => (
+          <Input
+            {...props}
+            value={draft.title}
+            onChange={set("title")}
+            required
+            maxLength={120}
+            autoComplete="off"
+          />
+        )}
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("form.category")} error={errors.category}>
           {(props) => (
-            <Select {...props} value={draft.category} onChange={set("category")} required>
+            <Select
+              {...props}
+              value={draft.category}
+              onChange={set("category")}
+              required
+            >
               <option value="" disabled>
                 —
               </option>
@@ -217,36 +299,65 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           )}
         </Field>
         <Field label={t("form.date")} error={errors.date}>
-          {(props) => <Input {...props} type="date" value={draft.date} max={todayIso()} onChange={set("date")} required />}
+          {(props) => (
+            <Input
+              {...props}
+              type="date"
+              value={draft.date}
+              max={todayIso()}
+              onChange={set("date")}
+              required
+            />
+          )}
         </Field>
       </div>
 
-      <section aria-labelledby="reward-panel-title" aria-live="polite" className="rounded-xl border border-found/40 bg-found-bg/40 p-4">
+      <section
+        aria-labelledby="reward-panel-title"
+        aria-live="polite"
+        className="rounded-xl border border-found/40 bg-found-bg/40 p-4"
+      >
         <h2 id="reward-panel-title" className="text-sm font-semibold">
           {t("reward.panelTitle")}
         </h2>
         {!rewardPaise ? (
-          <p className="mt-2 text-sm text-muted">{t("reward.selectCategory")}</p>
+          <p className="mt-2 text-sm text-muted">
+            {t("reward.selectCategory")}
+          </p>
         ) : draft.type === "lost" ? (
           <>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
-                <dt className="text-sm text-muted">{t("reward.finderReward")}</dt>
+                <dt className="text-sm text-muted">
+                  {t("reward.finderReward")}
+                </dt>
                 <dd data-testid="form-reward" className="text-xl font-bold">
                   {inr(rewardPaise, locale)}
                 </dd>
-                <dd className="text-xs text-muted">{t("reward.lost.rewardBody", { amount: inr(rewardPaise, locale) })}</dd>
+                <dd className="text-xs text-muted">
+                  {t("reward.lost.rewardBody", {
+                    amount: inr(rewardPaise, locale),
+                  })}
+                </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted">{t("reward.connectionFee")}</dt>
+                <dt className="text-sm text-muted">
+                  {t("reward.connectionFee")}
+                </dt>
                 <dd className="text-xl font-bold">{inr(feePaise, locale)}</dd>
-                <dd className="text-xs text-muted">{t("reward.lost.feeBody", { fee: inr(feePaise, locale) })}</dd>
+                <dd className="text-xs text-muted">
+                  {t("reward.lost.feeBody", { fee: inr(feePaise, locale) })}
+                </dd>
               </div>
             </dl>
-            <p className="mt-2 text-xs font-medium text-found">{t("reward.postingFree")}</p>
+            <p className="mt-2 text-xs font-medium text-found">
+              {t("reward.postingFree")}
+            </p>
             {needsAck && (
               <div className="mt-3">
-                {ackNotice && !rewardAck && <p className="mb-2 text-sm text-warn">{ackNotice}</p>}
+                {ackNotice && !rewardAck && (
+                  <p className="mb-2 text-sm text-warn">{ackNotice}</p>
+                )}
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
@@ -257,10 +368,17 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
                       setAckNotice(null);
                     }}
                     aria-invalid={errors.acceptRewardTerms ? true : undefined}
-                    aria-describedby={errors.acceptRewardTerms ? "ack-error" : undefined}
+                    aria-describedby={
+                      errors.acceptRewardTerms ? "ack-error" : undefined
+                    }
                     required
                   />
-                  <span className="text-sm">{t("reward.lost.ack", { amount: inr(rewardPaise, locale), fee: inr(feePaise, locale) })}</span>
+                  <span className="text-sm">
+                    {t("reward.lost.ack", {
+                      amount: inr(rewardPaise, locale),
+                      fee: inr(feePaise, locale),
+                    })}
+                  </span>
                 </label>
                 {errors.acceptRewardTerms && (
                   <p id="ack-error" className="mt-1 text-sm text-lost">
@@ -273,53 +391,117 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
         ) : (
           <>
             <dl className="mt-3">
-              <dt className="text-sm text-muted">{t("reward.categoryReward")}</dt>
+              <dt className="text-sm text-muted">
+                {t("reward.categoryReward")}
+              </dt>
               <dd data-testid="form-reward" className="text-xl font-bold">
                 {inr(rewardPaise, locale)}
               </dd>
-              <dd className="text-xs text-muted">{t("reward.found.rewardBody", { amount: inr(rewardPaise, locale) })}</dd>
+              <dd className="text-xs text-muted">
+                {t("reward.found.rewardBody", {
+                  amount: inr(rewardPaise, locale),
+                })}
+              </dd>
             </dl>
-            <p className="mt-2 text-xs">{t("reward.found.feeBody", { fee: inr(feePaise, locale) })}</p>
-            <p className="mt-1 text-xs text-muted">{t("reward.found.dependsNote")}</p>
+            <p className="mt-2 text-xs">
+              {t("reward.found.feeBody", { fee: inr(feePaise, locale) })}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {t("reward.found.dependsNote")}
+            </p>
           </>
         )}
       </section>
 
-      <Field label={t("form.location")} hint={t("form.location.hint")} error={errors.location || errors.latitude}>
-        {(props) => <Input {...props} value={draft.location} onChange={set("location")} required maxLength={200} />}
+      <Field
+        label={t("form.location")}
+        hint={t("form.location.hint")}
+        error={errors.location || errors.latitude}
+      >
+        {(props) => (
+          <Input
+            {...props}
+            value={draft.location}
+            onChange={set("location")}
+            required
+            maxLength={200}
+          />
+        )}
       </Field>
       <div className="-mt-3 flex flex-wrap items-center gap-2">
         {draft.latitude ? (
           <>
             <p className="text-sm text-found">{t("form.locationSaved")}</p>
-            <Button type="button" variant="ghost" onClick={() => setDraft((d) => ({ ...d, latitude: "", longitude: "" }))}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                setDraft((d) => ({ ...d, latitude: "", longitude: "" }))
+              }
+            >
               {t("form.removeLocation")}
             </Button>
           </>
         ) : (
-          <Button type="button" variant="secondary" onClick={useMyLocation} loading={locating}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={useMyLocation}
+            loading={locating}
+          >
             <LocateFixed className="size-4" aria-hidden />
             {t("form.useLocation")}
           </Button>
         )}
       </div>
 
-      <Field label={t("form.description")} hint={t("form.description.hint")} error={errors.description} optional optionalLabel={t("common.optional")}>
-        {(props) => <Textarea {...props} value={draft.description} onChange={set("description")} maxLength={2000} rows={4} />}
+      <Field
+        label={t("form.description")}
+        hint={t("form.description.hint")}
+        error={errors.description}
+        optional
+        optionalLabel={t("common.optional")}
+      >
+        {(props) => (
+          <Textarea
+            {...props}
+            value={draft.description}
+            onChange={set("description")}
+            maxLength={2000}
+            rows={4}
+          />
+        )}
       </Field>
 
-      <Field label={t("form.question")} hint={t("form.question.hint")} error={errors.ownershipQuestion}>
-        {(props) => <Input {...props} value={draft.ownershipQuestion} onChange={set("ownershipQuestion")} maxLength={300} />}
+      <Field
+        label={t("form.question")}
+        hint={t("form.question.hint")}
+        error={errors.ownershipQuestion}
+      >
+        {(props) => (
+          <Input
+            {...props}
+            value={draft.ownershipQuestion}
+            onChange={set("ownershipQuestion")}
+            maxLength={300}
+          />
+        )}
       </Field>
 
       <fieldset>
         <legend className="text-sm font-medium">{t("form.photos")}</legend>
-        <p className="mb-2 text-xs text-muted">{t("form.photos.hint", { max: MAX_PHOTOS, mb: MAX_MB })}</p>
+        <p className="mb-2 text-xs text-muted">
+          {t("form.photos.hint", { max: MAX_PHOTOS, mb: MAX_MB })}
+        </p>
         <ul className="flex flex-wrap gap-3">
           {existing.map((image, index) => (
             <li key={image.id} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={image.thumbUrl} alt="" className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90" />
+              <img
+                src={image.thumbUrl}
+                alt=""
+                className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90"
+              />
               <button
                 type="button"
                 onClick={() => setRemoveIds((ids) => [...ids, image.id])}
@@ -333,12 +515,20 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
           {previews.map((url, index) => (
             <li key={url} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90" />
+              <img
+                src={url}
+                alt=""
+                className="size-24 rounded-lg object-cover transition-[filter] hover:brightness-90"
+              />
               <button
                 type="button"
-                onClick={() => setFiles((list) => list.filter((_, i) => i !== index))}
+                onClick={() =>
+                  setFiles((list) => list.filter((_, i) => i !== index))
+                }
                 className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow transition-colors hover:border-lost hover:text-lost"
-                aria-label={t("form.photos.remove", { n: existing.length + index + 1 })}
+                aria-label={t("form.photos.remove", {
+                  n: existing.length + index + 1,
+                })}
               >
                 <X className="size-4" aria-hidden />
               </button>
@@ -373,14 +563,23 @@ export function ItemForm({ item, defaultType = "lost" }: { item?: Item; defaultT
 
       {needsReview && (
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-warn/40 bg-warn-bg p-3">
-          <input type="checkbox" className="mt-1 size-5 shrink-0" checked={reviewRequested} onChange={(e) => setReviewRequested(e.target.checked)} />
+          <input
+            type="checkbox"
+            className="mt-1 size-5 shrink-0"
+            checked={reviewRequested}
+            onChange={(e) => setReviewRequested(e.target.checked)}
+          />
           <span className="text-sm">{t("form.requestReview")}</span>
         </label>
       )}
 
       <div className="flex gap-2">
         <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          {saving ? t("form.saving") : editing ? t("form.submit.edit") : t("form.submit.create")}
+          {saving
+            ? t("form.saving")
+            : editing
+              ? t("form.submit.edit")
+              : t("form.submit.create")}
         </Button>
       </div>
     </form>

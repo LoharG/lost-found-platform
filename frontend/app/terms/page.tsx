@@ -24,6 +24,18 @@ export default function TermsPage() {
         <li>Hand found documents, IDs and valuables to the police where the law requires it. [REVIEW: local legal obligations]</li>
       </ul>
 
+      <h2 className="mt-4 text-xl font-semibold">Fees and rewards</h2>
+      <ul className="list-disc pl-6">
+        <li>Reporting items and verifying ownership are free.</li>
+        <li>The owner pays a ₹100 connection fee to the platform when a match is accepted. It unlocks private communication for that match only.</li>
+        <li>
+          Category finder rewards are agreed by the owner and paid directly to the finder. The platform records the agreed amount and the finder&apos;s
+          confirmation, but does not collect, hold or guarantee rewards.
+        </li>
+        <li>Contact details are shared only with the consent of the person they belong to.</li>
+        <li>Connection-fee refunds follow the rules on the Pricing page and are reviewed manually. [REVIEW: final refund policy]</li>
+      </ul>
+
       <h2 className="mt-4 text-xl font-semibold">Moderation</h2>
       <p>
         Anyone can report a listing. Moderators may remove listings that break these terms; every decision is recorded with a reason. The poster is notified

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { ListSkeleton } from "@/components/Skeleton";
+import { PendingListings, SupportQueue } from "@/components/SupportQueue";
 import { useToast } from "@/components/Toaster";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -120,7 +121,8 @@ function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
               <Button
                 type="button"
                 variant="danger"
-                disabled={reason.trim().length < 3} disabledReason={t("disabled.needReason")}
+                disabled={reason.trim().length < 3}
+                disabledReason={t("disabled.needReason")}
                 loading={busy === "remove"}
                 onClick={() =>
                   act("remove", `/moderation/items/${entry.item.id}/remove`)
@@ -134,7 +136,8 @@ function QueueEntry({ entry, onDone }: { entry: Entry; onDone: () => void }) {
                 key={report.id}
                 type="button"
                 variant="secondary"
-                disabled={reason.trim().length < 3} disabledReason={t("disabled.needReason")}
+                disabled={reason.trim().length < 3}
+                disabledReason={t("disabled.needReason")}
                 loading={busy === `d${report.id}`}
                 onClick={() =>
                   act(
@@ -215,13 +218,26 @@ function Queue() {
   );
 }
 
+function ModeratorOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!user || (user.role !== "moderator" && user.role !== "admin"))
+    return null;
+  return <div className="flex flex-col gap-10">{children}</div>;
+}
+
 export default function ModerationPage() {
   const { t } = useI18n();
   return (
     <div>
       <PageHeader title={t("moderation.title")} />
       <RequireAuth>
-        <Queue />
+        <div className="flex flex-col gap-10">
+          <Queue />
+          <ModeratorOnly>
+            <SupportQueue />
+            <PendingListings />
+          </ModeratorOnly>
+        </div>
       </RequireAuth>
     </div>
   );

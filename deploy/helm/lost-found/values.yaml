@@ -30,9 +30,11 @@ api:
     TRUST_PROXY: "1"
     NOTIFICATION_EMAILS: "true"
     MAIL_FROM: "Lost & Found <no-reply@lostfound.example.com>"
+    PAYMENT_PROVIDER: razorpay   # RAZORPAY_KEY_ID/_KEY_SECRET/_WEBHOOK_SECRET come from the secret
   # Secret with keys: SESSION_SECRET, DATABASE_URL, and optionally
   # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SMTP_URL, APPLE_CLIENT_ID,
-  # APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY.
+  # APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY, and (required)
+  # RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET.
   existingSecret: lost-found-api
   serviceAccount:
     create: true

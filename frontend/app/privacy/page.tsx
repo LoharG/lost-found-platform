@@ -31,6 +31,13 @@ export default function PrivacyPage() {
         if you attached coordinates. Your email, phone number, precise coordinates, messages and claim answers are never public.
       </p>
 
+      <h2 className="mt-4 text-xl font-semibold">Payments</h2>
+      <p>
+        The ₹100 connection fee is processed by our payment provider (Razorpay). We store the order and payment identifiers, amount and status, never card or
+        bank details. Finder rewards are paid directly between users; we only record the agreed amount and the finder&apos;s confirmation. Payment records are
+        kept for accounting even if an account is deleted. [REVIEW: retention period required by tax law]
+      </p>
+
       <h2 className="mt-4 text-xl font-semibold">Photos</h2>
       <p>Uploaded photos are re-encoded and all embedded metadata (including camera GPS location) is removed before they are stored.</p>
 

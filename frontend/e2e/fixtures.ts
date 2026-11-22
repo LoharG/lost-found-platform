@@ -39,10 +39,16 @@ export async function apiCall(context: BrowserContext, method: string, path: str
   return context.request.fetch(`/api${path}`, { method, headers: { "X-CSRF-Token": token }, ...options } as never);
 }
 
+// Reward per category (mirrors the API's pricing table; asserted against /api/pricing in tests).
+export const REWARD_PAISE: Record<string, number> = { phone: 50000, electronics: 50000, wallet: 30000, bag: 30000, keys: 30000, documents: 30000, jewelry: 50000, clothing: 30000, pet: 50000, other: 35000 };
+
 export async function createListing(context: BrowserContext, fields: Record<string, string>) {
-  const res = await apiCall(context, "POST", "/items", {
-    multipart: { type: "lost", category: "other", location: "Pune", date: new Date().toISOString().slice(0, 10), ...fields },
-  });
+  const body: Record<string, string> = { type: "lost", category: "other", location: "Pune", date: new Date().toISOString().slice(0, 10), ...fields };
+  if (body.type === "lost" && !body.acceptRewardTerms) {
+    body.acceptRewardTerms = "true";
+    body.expectedRewardPaise = String(REWARD_PAISE[body.category]);
+  }
+  const res = await apiCall(context, "POST", "/items", { multipart: body });
   expect(res.status(), await res.text()).toBe(201);
   return (await res.json()).item as { id: number; title: string; images: { url: string }[] };
 }
@@ -58,6 +64,21 @@ export async function pngFixture(page: Page) {
 export async function openMenuIfCollapsed(page: Page) {
   const toggle = page.getByRole("button", { name: "Menu" });
   if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+}
+
+// API shortcut: owner claims a found item (accepting the current reward).
+export async function claimFoundApi(context: BrowserContext, item: { id: number; category?: string }, category: string, answer = "It has my initials") {
+  const res = await apiCall(context, "POST", `/items/${item.id}/claims`, { data: { answer, acceptReward: true, expectedRewardPaise: REWARD_PAISE[category] } });
+  expect([200, 201]).toContain(res.status());
+  return (await res.json()).claim as { id: number; conversationId: number };
+}
+
+// API shortcut: owner pays the ₹100 fee via the local test-mode provider.
+export async function payApi(context: BrowserContext, claimId: number) {
+  const checkout = await (await apiCall(context, "POST", `/claims/${claimId}/checkout`, { data: {} })).json();
+  const done = await (await apiCall(context, "POST", "/payments/test/complete", { data: { orderId: checkout.checkout.orderId, outcome: "success" } })).json();
+  const verify = await apiCall(context, "POST", "/payments/verify", { data: { orderId: checkout.checkout.orderId, paymentId: done.paymentId, signature: done.signature } });
+  expect((await verify.json()).status).toBe("paid");
 }
 
 export const test = base;
