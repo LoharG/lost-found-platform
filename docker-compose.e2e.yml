@@ -17,6 +17,9 @@ services:
     environment:
       NODE_ENV: test
       ENABLE_TEST_AUTH: "true"
+      # Automated tests read codes from the isolated Mailpit inbox; never Resend.
+      RESEND_API_KEY: ""
+      EMAIL_FROM: "Lost & Found <test@lostfound.local>"
       APP_URL: http://localhost:3100
       RATE_LIMIT_MULTIPLIER: "50"
       LOG_LEVEL: warn

@@ -128,7 +128,7 @@ export function LoginForm() {
     setError(null);
   }
 
-  const providerHref = (name: "google" | "apple") => `/api/auth/${name}?next=${encodeURIComponent(next)}`;
+  const providerHref = (name: "google" | "apple") => `/api/auth/${name}`;
 
   if (step === "done") {
     return (

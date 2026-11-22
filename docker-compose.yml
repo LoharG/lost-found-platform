@@ -21,8 +21,10 @@ x-api-env: &api-env
   APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
   APPLE_KEY_ID: ${APPLE_KEY_ID:-}
   APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+  # Email: Resend when RESEND_API_KEY is set, otherwise SMTP (Mailpit locally).
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  EMAIL_FROM: ${EMAIL_FROM:-Lost & Found <no-reply@lostfound.local>}
   SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
-  MAIL_FROM: ${MAIL_FROM:-Lost & Found <no-reply@lostfound.local>}
   STORAGE_DRIVER: local
   STORAGE_LOCAL_DIR: /app/storage
   LEGACY_UPLOADS_DIR: /app/uploads
