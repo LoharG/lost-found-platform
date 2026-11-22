@@ -145,3 +145,32 @@ test("main journeys render on mobile without overflow @responsive", async ({ bro
   }
   await context.close();
 });
+
+// ---------------------------------------------------------------------------
+// Site visitor analytics
+// ---------------------------------------------------------------------------
+test("visits are counted without cookies and shown on the admin dashboard", async ({ browser }) => {
+  const REAL_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+  const visitor = await browser.newContext({ userAgent: REAL_UA });
+  const page = await visitor.newPage();
+  const path = `/items?q=analytics-${RUN}`;
+  const tracked = page.waitForResponse((r) => r.url().endsWith("/api/analytics/pageview") && r.status() === 204);
+  await page.goto(path);
+  await tracked;
+  expect((await visitor.cookies()).map((c) => c.name)).not.toContain("_ga");
+  await visitor.close();
+
+  const admin = await newUser(browser, persona("admin", "admin"));
+  await admin.page.goto("/admin");
+  await expect(admin.page.getByRole("heading", { level: 1, name: "Admin dashboard" })).toBeVisible();
+  await expect(admin.page.getByText("Visitors today")).toBeVisible();
+  await expect(admin.page.getByRole("link", { name: "/items", exact: true })).toBeVisible();
+  await admin.page.getByText("Show as table").click();
+  await expect(admin.page.getByRole("columnheader", { name: "Visitors" }).first()).toBeVisible();
+  await admin.context.close();
+
+  const user = await newUser(browser, persona("not-admin"));
+  await user.page.goto("/admin");
+  await expect(user.page.getByText("You need admin or moderator access")).toBeVisible();
+  await user.context.close();
+});

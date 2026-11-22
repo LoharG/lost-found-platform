@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDate, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 
@@ -33,7 +33,15 @@ export function VisitorsChart({ data }: { data: DailyPoint[] }) {
   const { t, locale } = useI18n();
   const [active, setActive] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const width = 720;
+  // Draw at the container's real pixel width so text stays 11px on phones.
+  const [width, setWidth] = useState(720);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(280, Math.round(entry.contentRect.width))));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const { max, ticks, peak } = useMemo(() => {
     const top = Math.max(...data.map((d) => d.visitors), 0);
@@ -48,7 +56,7 @@ export function VisitorsChart({ data }: { data: DailyPoint[] }) {
   const gap = 2;
   const barW = Math.max(1, slot - gap);
   const y = (v: number) => PAD.top + plotH - (v / max) * plotH;
-  const labelEvery = Math.ceil(data.length / 6);
+  const labelEvery = Math.ceil(data.length / Math.max(2, Math.floor(plotW / 70)));
   const short = (day: string) => formatDate(day, locale).replace(/\s?\d{4}$/, "");
 
   const activePoint = active !== null ? data[active] : null;
@@ -60,7 +68,7 @@ export function VisitorsChart({ data }: { data: DailyPoint[] }) {
         {t("admin.chartSummary", { days: data.length, peak: peak.visitors, date: peak.day ? formatDate(peak.day, locale) : "—" })}
       </figcaption>
       <div ref={wrapRef} className="relative" onMouseLeave={() => setActive(null)}>
-        <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="h-auto w-full" role="img" aria-hidden="true">
+        <svg viewBox={`0 0 ${width} ${HEIGHT}`} width={width} height={HEIGHT} className="block w-full" role="img" aria-hidden="true">
           {ticks.map((tick) => (
             <g key={tick}>
               <line x1={PAD.left} x2={width - PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" strokeWidth={1} />

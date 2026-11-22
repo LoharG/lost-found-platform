@@ -17,6 +17,7 @@ This page describes what the code does today. Retention periods marked
 | Notifications | `notifications` | The account is deleted | Cascades; **[owner]** optional purge after 180 days |
 | Abuse reports | `listing_reports` | Kept for moderation history | The reporter link is set to NULL when their account is deleted |
 | Moderator audit log | `moderation_actions` | Kept | The moderator link is set to NULL when their account is deleted |
+| Visitor analytics (page path, referrer domain, daily-rotating visitor hash — no IP, no cookie) | `page_views`, `analytics_salts` | Page views about 400 days; daily salts 2 days | Hourly purge of both |
 | Rate-limit counters | `rate_limits` | Their window | Hourly purge of expired rows |
 | Request logs | stdout, then the log platform | **[owner]** e.g. 30 days | Log platform retention |
 | Database backups | RDS | **[owner]** e.g. 7–35 days | Backups are overwritten; deleted data persists in them until then |

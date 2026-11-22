@@ -43,7 +43,13 @@ export default function PrivacyPage() {
       <h2 className="mt-4 text-xl font-semibold">Cookies and tracking</h2>
       <p>
         We use one essential session cookie to keep you signed in and protect forms, and preference cookies for language and time zone. We do not use
-        advertising or analytics trackers, so no consent banner is shown. [REVIEW: update this section if analytics are added.]
+        advertising or third-party analytics trackers, so no consent banner is shown.
+      </p>
+      <p>
+        We count visits ourselves without cookies: for each page view we store the page path, the referring website (domain only) and a
+        visitor code made from a random key that changes every day, your IP address and your browser type. The daily key is deleted after
+        two days, so visits cannot be linked across days or traced back to you, and your IP address is never stored. Browsers that send Do
+        Not Track or Global Privacy Control are not counted. Page-view records are deleted after about 13 months.
       </p>
 
       <h2 className="mt-4 text-xl font-semibold">Email</h2>
