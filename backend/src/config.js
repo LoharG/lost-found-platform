@@ -56,6 +56,16 @@ function loadConfig(env = process.env) {
     throw new Error("S3_BUCKET is required when STORAGE_DRIVER=s3");
   }
 
+  const paymentProvider = env.PAYMENT_PROVIDER || "test";
+  if (!["test", "razorpay"].includes(paymentProvider)) throw new Error("PAYMENT_PROVIDER must be 'test' or 'razorpay'");
+  if (paymentProvider === "razorpay" && !(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && env.RAZORPAY_WEBHOOK_SECRET)) {
+    throw new Error("RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required when PAYMENT_PROVIDER=razorpay");
+  }
+  if (paymentProvider === "test" && isProduction && !bool(env.ALLOW_TEST_PAYMENTS)) {
+    throw new Error("PAYMENT_PROVIDER=test is not allowed in production (set PAYMENT_PROVIDER=razorpay)");
+  }
+  const derived = (label) => require("crypto").createHmac("sha256", sessionSecret).update(label).digest("hex");
+
   const database = env.DATABASE_URL
     ? { connectionString: env.DATABASE_URL }
     : {
@@ -124,6 +134,15 @@ function loadConfig(env = process.env) {
       maxPixels: int(env.UPLOAD_MAX_MEGAPIXELS, 40) * 1_000_000,
       maxDimension: int(env.UPLOAD_MAX_DIMENSION, 10000),
       minDimension: 32,
+    },
+    payments: {
+      provider: paymentProvider,
+      razorpay: {
+        keyId: env.RAZORPAY_KEY_ID || "",
+        keySecret: env.RAZORPAY_KEY_SECRET || "",
+        webhookSecret: env.RAZORPAY_WEBHOOK_SECRET || "",
+      },
+      test: { keySecret: derived("test-payment-key"), webhookSecret: derived("test-payment-webhook") },
     },
     rateLimitMultiplier: Math.max(0.01, Number(env.RATE_LIMIT_MULTIPLIER || 1)),
     enableTestAuth,

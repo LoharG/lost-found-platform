@@ -6,10 +6,10 @@
 -- Listings: owner reward acknowledgement (lost listings) + category confirmation
 -- ---------------------------------------------------------------------------
 ALTER TABLE items ADD COLUMN IF NOT EXISTS category_confirmed BOOLEAN NOT NULL DEFAULT TRUE;
--- Existing rows got category 'other' by default in 003; they must be confirmed
--- by the poster before a new paid connection can start.
-UPDATE items SET category_confirmed = FALSE WHERE created_at < now() AND category = 'other'
-  AND id NOT IN (SELECT id FROM items WHERE category_confirmed IS FALSE);
+-- Prototype rows received category 'other' by default in 003, so an existing
+-- 'other' may not be a real choice: the poster confirms it before a new paid
+-- connection starts. (Runs once; new rows default to confirmed.)
+UPDATE items SET category_confirmed = FALSE WHERE category = 'other';
 ALTER TABLE items ADD COLUMN IF NOT EXISTS reward_paise INTEGER CHECK (reward_paise IS NULL OR reward_paise > 0);
 ALTER TABLE items ADD COLUMN IF NOT EXISTS reward_pricing_version TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS reward_terms_version TEXT;
