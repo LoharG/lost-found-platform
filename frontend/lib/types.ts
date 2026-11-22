@@ -49,7 +49,7 @@ export type Item = {
   // Owner/moderator view only
   latitude?: number | null;
   longitude?: number | null;
-  moderationState?: "visible" | "removed";
+  moderationState?: "visible" | "removed" | "pending";
   pendingClaims?: number;
 };
 
