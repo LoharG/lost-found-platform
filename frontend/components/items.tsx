@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Calendar, ImageOff, MapPin } from "lucide-react";
 import { Badge } from "./ui";
 import { ViewedBadge } from "./ViewedBadge";
+import { RewardTag } from "./pricing";
 import { formatDate } from "@/lib/format";
 import type { Locale, MessageKey } from "@/lib/i18n/messages";
 import type { Item, ItemStatus, ItemType } from "@/lib/types";
@@ -52,6 +53,7 @@ export function ItemCard({ item, t, locale, headingLevel = 2 }: { item: Item; t:
             {item.title}
           </Link>
         </Heading>
+        <RewardTag reward={item.reward} t={t} locale={locale} />
         <p className="flex items-center gap-1.5 text-sm text-muted">
           <MapPin className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{item.location}</span>
