@@ -4,11 +4,15 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Phone, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Lock, Phone, ShieldAlert } from "lucide-react";
 import { errorMessage, useAuth } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Alert, Badge, Button, Card, Textarea } from "@/components/ui";
 import { PanelSkeleton } from "@/components/Skeleton";
+import { CheckoutCard } from "@/components/Checkout";
+import { MatchPanel, type MatchClaim } from "@/components/MatchPanel";
+import { inr } from "@/lib/money";
+import { usePricing } from "@/lib/pricing";
 import { useToast } from "@/components/Toaster";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -23,7 +27,11 @@ type Conversation = {
   counterpart: { displayName: string; phone: string | null };
   sharingMyPhone: boolean;
   messages: Message[];
-  claims: { id: number; status: ClaimStatus; answer: string; createdAt: string }[];
+  locked: boolean;
+  lockedReason: string | null;
+  unlockSource: "grandfathered" | "payment" | null;
+  viewerRole: "owner" | "finder" | null;
+  claims: (MatchClaim & { status: ClaimStatus; answer: string; createdAt: string })[];
 };
 
 function ConversationView({ id }: { id: string }) {
@@ -37,6 +45,7 @@ function ConversationView({ id }: { id: string }) {
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
+  const pricing = usePricing();
 
   const load = useCallback(
     () =>
@@ -109,6 +118,8 @@ function ConversationView({ id }: { id: string }) {
   if (notFound) return <Alert tone="error">{t("inbox.notFound")}</Alert>;
   if (!data) return error ? <Alert tone="error">{error}</Alert> : <PanelSkeleton label={t("common.loading")} />;
 
+  const accepted = data.claims.find((c) => c.status === "accepted") ?? null;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section aria-label={t("inbox.title")} className="flex flex-col gap-3">
@@ -118,6 +129,11 @@ function ConversationView({ id }: { id: string }) {
             {t("inbox.safety")}
           </span>
         </Alert>
+        {data.locked ? (
+          <LockedChat data={data} feePaise={pricing?.connectionFeePaise ?? 10000} onPaid={load} />
+        ) : (
+          <>
+        {data.unlockSource === "grandfathered" && <p className="text-xs text-muted">{t("chat.grandfathered")}</p>}
         <ol ref={listRef} className="flex max-h-[60vh] min-h-48 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface p-4" aria-live="polite">
           {data.messages.map((m) => (
             <li key={m.clientId} className={clsx("flex", m.mine ? "justify-end" : "justify-start")}>
@@ -154,6 +170,8 @@ function ConversationView({ id }: { id: string }) {
         ) : (
           <Alert tone="info">{t("inbox.closed")}</Alert>
         )}
+          </>
+        )}
       </section>
 
       <aside className="flex flex-col gap-4">
@@ -167,6 +185,11 @@ function ConversationView({ id }: { id: string }) {
           <p className="text-sm text-muted">{data.item.location}</p>
         </Card>
 
+        {!data.locked && data.viewerRole && accepted && accepted.agreement && (
+          <MatchPanel claim={accepted} role={data.viewerRole} onChange={load} />
+        )}
+
+        {!data.locked && (
         <Card>
           {data.counterpart.phone && (
             <p className="mb-3 flex items-center gap-2 text-sm font-medium">
@@ -196,6 +219,7 @@ function ConversationView({ id }: { id: string }) {
             </p>
           )}
         </Card>
+        )}
 
         {data.claims.length > 0 && (
           <Card>
@@ -216,6 +240,35 @@ function ConversationView({ id }: { id: string }) {
           </Card>
         )}
       </aside>
+    </div>
+  );
+}
+
+// Shown instead of the chat until the owner pays the connection fee.
+function LockedChat({ data, feePaise, onPaid }: { data: Conversation; feePaise: number; onPaid: () => void }) {
+  const { t, locale } = useI18n();
+  const fee = inr(feePaise, locale);
+  const accepted = data.claims.find((c) => c.status === "accepted");
+  return (
+    <div className="flex flex-col gap-3">
+      <Card className="border-dashed">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Lock className="size-4" aria-hidden />
+          {t("chat.locked")}
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          {data.lockedReason === "refunded"
+            ? t("checkout.refunded")
+            : !accepted
+              ? t("chat.lockedPending")
+              : data.viewerRole === "owner"
+                ? t("chat.lockedOwner", { fee })
+                : t("chat.lockedFinder", { fee })}
+        </p>
+      </Card>
+      {accepted && data.viewerRole === "owner" && accepted.agreement && (
+        <CheckoutCard claimId={accepted.id} rewardPaise={accepted.agreement.rewardPaise} feePaise={accepted.agreement.feePaise} onPaid={onPaid} />
+      )}
     </div>
   );
 }
