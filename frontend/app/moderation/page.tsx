@@ -100,15 +100,17 @@ function Queue() {
   const [error, setError] = useState<string | null>(null);
   const allowed = user && (user.role === "moderator" || user.role === "admin");
 
-  const load = useCallback(async () => {
-    try {
-      const [queue, audit] = await Promise.all([api<{ entries: Entry[] }>("/moderation/queue"), api<{ actions: Action[] }>("/moderation/actions")]);
-      setEntries(queue.entries);
-      setActions(audit.actions);
-    } catch (err) {
-      setError(errorMessage(err, t));
-    }
-  }, [t]);
+  const load = useCallback(
+    () =>
+      Promise.all([api<{ entries: Entry[] }>("/moderation/queue"), api<{ actions: Action[] }>("/moderation/actions")]).then(
+        ([queue, audit]) => {
+          setEntries(queue.entries);
+          setActions(audit.actions);
+        },
+        (err) => setError(errorMessage(err, t))
+      ),
+    [t]
+  );
 
   useEffect(() => {
     document.title = `${t("moderation.title")} · ${t("app.name")}`;

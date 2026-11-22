@@ -284,13 +284,14 @@ function OwnerPanel({ item }: { item: Item }) {
   const [matches, setMatches] = useState<{ score: number; item: Item }[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const loadClaims = useCallback(async () => {
-    try {
-      setClaims((await api<{ claims: Claim[] }>(`/items/${item.id}/claims`)).claims);
-    } catch (err) {
-      setError(errorMessage(err, t));
-    }
-  }, [item.id, t]);
+  const loadClaims = useCallback(
+    () =>
+      api<{ claims: Claim[] }>(`/items/${item.id}/claims`).then(
+        (res) => setClaims(res.claims),
+        (err) => setError(errorMessage(err, t))
+      ),
+    [item.id, t]
+  );
 
   useEffect(() => {
     loadClaims();

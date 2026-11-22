@@ -23,25 +23,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<Counts>({ notifications: 0, messages: 0 });
 
-  const refresh = useCallback(async () => {
-    try {
-      const me = await api<{ loggedIn: boolean; user?: User; csrfToken: string }>("/auth/me");
-      setCsrfToken(me.csrfToken);
-      setUser(me.loggedIn && me.user ? me.user : null);
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refresh = useCallback(
+    () =>
+      api<{ loggedIn: boolean; user?: User; csrfToken: string }>("/auth/me")
+        .then((me) => {
+          setCsrfToken(me.csrfToken);
+          setUser(me.loggedIn && me.user ? me.user : null);
+        })
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false)),
+    []
+  );
 
-  const refreshCounts = useCallback(async () => {
-    try {
-      setCounts(await api<Counts>("/notifications/unread-count"));
-    } catch {
-      /* not signed in or offline */
-    }
-  }, []);
+  const refreshCounts = useCallback(
+    () =>
+      api<Counts>("/notifications/unread-count")
+        .then((next) => setCounts(next))
+        .catch(() => {
+          /* not signed in or offline */
+        }),
+    []
+  );
 
   useEffect(() => {
     refresh();

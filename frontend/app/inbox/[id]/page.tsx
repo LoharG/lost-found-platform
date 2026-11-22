@@ -35,16 +35,20 @@ function ConversationView({ id }: { id: string }) {
   const [sharing, setSharing] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await api<{ conversation: Conversation }>(`/conversations/${id}`);
-      setData(res.conversation);
-      refreshCounts();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setNotFound(true);
-      else setError(errorMessage(err, t));
-    }
-  }, [id, t, refreshCounts]);
+  const load = useCallback(
+    () =>
+      api<{ conversation: Conversation }>(`/conversations/${id}`).then(
+        (res) => {
+          setData(res.conversation);
+          refreshCounts();
+        },
+        (err) => {
+          if (err instanceof ApiError && err.status === 404) setNotFound(true);
+          else setError(errorMessage(err, t));
+        }
+      ),
+    [id, t, refreshCounts]
+  );
 
   useEffect(() => {
     load();

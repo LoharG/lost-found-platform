@@ -33,13 +33,14 @@ function NotificationList() {
   const [items, setItems] = useState<Notification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setItems((await api<{ notifications: Notification[] }>("/notifications")).notifications);
-    } catch (err) {
-      setError(errorMessage(err, t));
-    }
-  }, [t]);
+  const load = useCallback(
+    () =>
+      api<{ notifications: Notification[] }>("/notifications").then(
+        (res) => setItems(res.notifications),
+        (err) => setError(errorMessage(err, t))
+      ),
+    [t]
+  );
   useEffect(() => {
     document.title = `${t("notifications.title")} · ${t("app.name")}`;
     load();

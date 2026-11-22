@@ -47,7 +47,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     next.set("page", String(page));
     return `/items?${next}`;
   };
-  const { page: _page, ...filters } = params;
+  const filters = Object.fromEntries(Object.entries(params).filter(([key]) => key !== "page"));
 
   return (
     <div>

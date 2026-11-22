@@ -46,16 +46,18 @@ export function Header() {
   const { t } = useI18n();
   const { user, loading, counts, logout } = useAuth();
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const open = openPath === pathname;
+  const setOpen = (value: boolean | ((v: boolean) => boolean)) =>
+    setOpenPath((current) => ((typeof value === "function" ? value(current === pathname) : value) ? pathname : null));
   const toggleRef = useRef<HTMLButtonElement>(null);
 
-  // Close the mobile menu on navigation and on Escape.
-  useEffect(() => setOpen(false), [pathname]);
+  // The menu closes on navigation (pathname changes) and on Escape.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setOpen(false);
+        setOpenPath(null);
         toggleRef.current?.focus();
       }
     };
