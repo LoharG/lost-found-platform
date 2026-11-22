@@ -105,9 +105,9 @@ test("keyboard-only: skip link, search, report form and contact", async ({ brows
   await page.keyboard.press("Tab");
   await page.keyboard.type(`Keyboard phone ${RUN}`);
   await page.keyboard.press("Tab"); // category (native select: arrow keys choose)
-  await expect(page.getByLabel("Category")).toBeFocused();
+  await expect(page.getByLabel("Category", { exact: true })).toBeFocused();
   // Native <select> keyboard behaviour differs per OS; choose the option directly.
-  await page.getByLabel("Category").selectOption("phone");
+  await page.getByLabel("Category", { exact: true }).selectOption("phone");
   await page.getByLabel("Where?").focus(); // date input has one tab stop per segment in Chromium
   await page.keyboard.type("Deccan Gymkhana");
   await page.getByRole("button", { name: "Publish listing" }).focus();
@@ -121,16 +121,16 @@ test("keyboard-only: skip link, search, report form and contact", async ({ brows
   await expect(page.getByText("Please fix the highlighted fields.")).toBeVisible();
   await expect(page.locator("form div[tabindex='-1']").filter({ hasText: "Please fix the highlighted fields." })).toBeFocused();
 
-  // Contact via keyboard from another account.
+  // Respond to a lost listing via keyboard ("I found this item").
   const other = await newUser(browser, persona("kb-contact"));
   const target = await createListing(other.context, { title: `Keyboard target ${RUN}`, category: "keys" });
   await page.goto(`/items/${target.id}`);
-  await page.getByLabel("Send a private message").focus();
-  await page.keyboard.type("Is this still available?");
+  await page.getByLabel("Your answer (only the poster sees it)").focus();
+  await page.keyboard.type("Silver keys with a red tag");
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "I found this item" })).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/inbox\/\d+$/);
-  await expect(page.getByText("Is this still available?")).toBeVisible();
+  await expect(page.getByText("Your claim is waiting for the poster's decision.")).toBeVisible();
   await other.context.close();
 });
 
@@ -271,14 +271,15 @@ test("disabled buttons explain why; publishing shows a toast after redirect", as
   const other = await newUser(browser, persona("ux-target"));
   const target = await createListing(other.context, { title: `UX target ${RUN}`, category: "keys", type: "found" });
   await page.goto(`/items/${target.id}`);
-  const send = page.getByRole("button", { name: /Send/ }).first();
-  await expect(send).toBeDisabled();
-  await expect(send).toHaveAttribute("title", "Write a message first");
+  const claim = page.getByRole("button", { name: /This could be mine/ });
+  await expect(claim).toBeDisabled();
+  await expect(claim).toHaveAttribute("title", "Answer the question first");
 
   await page.goto("/report?type=lost");
   await page.getByLabel("What is it?").fill(`UX toast item ${RUN}`);
-  await page.getByLabel("Category").selectOption("other");
+  await page.getByLabel("Category", { exact: true }).selectOption("other");
   await page.getByLabel("Where?").fill("Pune");
+  await page.getByLabel(/I agree to pay the ₹350 category reward/).check();
   await page.getByRole("button", { name: "Publish listing" }).click();
   await expect(page).toHaveURL(/\/items\/\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Listing published" })).toBeVisible();

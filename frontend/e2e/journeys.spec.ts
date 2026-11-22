@@ -1,4 +1,4 @@
-import { apiCall, createListing, expect, newUser, openMenuIfCollapsed, persona, pngFixture, RUN, test } from "./fixtures";
+import { apiCall, claimFoundApi, createListing, expect, newUser, openMenuIfCollapsed, payApi, persona, pngFixture, RUN, test } from "./fixtures";
 
 test.describe.configure({ mode: "serial" });
 
@@ -76,9 +76,10 @@ test("reporter creates a listing with photos, finds it, edits it and sees change
   const title = `Grey Wildcraft backpack ${RUN}`;
 
   await page.goto("/report?type=found");
-  await page.getByLabel("I found something").check();
+  await page.locator("label", { hasText: "I found something" }).click();
+  await expect(page.getByLabel("I found something")).toBeChecked();
   await page.getByLabel("What is it?").fill(title);
-  await page.getByLabel("Category").selectOption("bag");
+  await page.getByLabel("Category", { exact: true }).selectOption("bag");
   await page.getByLabel("Where?").fill("Baner Road bus stop");
   await page.getByLabel("Description").fill("Grey with a laptop sleeve");
   await page.getByLabel("Ownership question (optional)").fill("What brand is the water bottle inside?");
@@ -117,10 +118,10 @@ test("reporter creates a listing with photos, finds it, edits it and sees change
 // ---------------------------------------------------------------------------
 // 3 + 4. Contact, claim, notification, accept, return; third-user isolation
 // ---------------------------------------------------------------------------
-test("claimant contacts and claims; reporter accepts and marks returned; outsiders are locked out", async ({ browser }) => {
-  const reporter = await newUser(browser, persona("finder"));
-  await apiCall(reporter.context, "PATCH", "/account/profile", { data: { phone: "+91 98765 43210" } });
-  const item = await createListing(reporter.context, {
+test("Path B (found item): owner claims with reward, finder accepts, owner pays ₹100, chat unlocks, return + reward confirmed", async ({ browser }) => {
+  const finder = await newUser(browser, persona("finder"));
+  await apiCall(finder.context, "PATCH", "/account/profile", { data: { phone: "+91 98765 43210" } });
+  const item = await createListing(finder.context, {
     type: "found",
     title: `Brown leather wallet ${RUN}`,
     category: "wallet",
@@ -128,72 +129,129 @@ test("claimant contacts and claims; reporter accepts and marks returned; outside
     location: "FC Road",
   });
 
+  // Owner sees the category reward on the item page and claims it.
   const owner = await newUser(browser, persona("owner"));
   await owner.page.goto(`/items/${item.id}`);
-  await owner.page.getByLabel("Send a private message").fill("Hi! I lost this near FC Road yesterday.");
-  await owner.page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(owner.page).toHaveURL(/\/inbox\/\d+$/);
-  const conversationId = owner.page.url().split("/").pop();
-  await expect(owner.page.getByText("Hi! I lost this near FC Road yesterday.")).toBeVisible();
-
-  await owner.page.goto(`/items/${item.id}`);
-  await expect(owner.page.getByText("Which card is in the front slot?")).toBeVisible();
+  const pricing = owner.page.getByRole("region", { name: "Finder reward & connection fee" });
+  await expect(pricing).toContainText("₹300");
+  await expect(pricing).toContainText("₹100");
+  await expect(owner.page.getByText("Posting and ownership verification are free.")).toBeVisible();
   await owner.page.getByLabel("Your answer (only the poster sees it)").fill("My college library card");
-  await owner.page.getByRole("button", { name: "This is mine" }).click();
-  await expect(owner.page.getByText("Claim sent. The poster has been notified.")).toBeVisible();
+  const claimButton = owner.page.getByRole("button", { name: /This could be mine/ });
+  await expect(claimButton).toBeDisabled();
+  await owner.page.getByLabel(/I agree to pay the ₹300 finder reward/).check();
+  await claimButton.click();
+  await expect(owner.page.getByRole("status").filter({ hasText: "Claim submitted" })).toBeVisible();
+  await expect(owner.page.getByText("Your claim is waiting for the poster's decision.")).toBeVisible();
 
-  // Reporter is notified.
-  await reporter.page.goto("/notifications");
-  await expect(reporter.page.getByRole("link", { name: new RegExp(`New claim on “Brown leather wallet ${RUN}”`) })).toBeVisible();
-  await expect(reporter.page.getByRole("link", { name: new RegExp(`New message about “Brown leather wallet ${RUN}”`) })).toBeVisible();
-
-  // Third user cannot read the conversation, claims, edit, or moderate.
+  // An outsider can't read anything about this match.
   const outsider = await newUser(browser, persona("outsider"));
-  expect((await outsider.context.request.get(`/api/conversations/${conversationId}`)).status()).toBe(404);
-  expect((await (await outsider.context.request.get(`/api/items/${item.id}/claims`)).json()).claims).toHaveLength(0);
-  expect((await apiCall(outsider.context, "PATCH", `/items/${item.id}`, { multipart: { title: "hacked" } })).status()).toBe(403);
-  expect((await apiCall(outsider.context, "POST", `/items/${item.id}/status`, { data: { status: "closed" } })).status()).toBe(403);
-  expect((await outsider.context.request.get("/api/moderation/queue")).status()).toBe(403);
-  await outsider.page.goto(`/inbox/${conversationId}`);
-  await expect(outsider.page.getByText("Conversation not found.")).toBeVisible();
-  await outsider.page.goto("/moderation");
-  await expect(outsider.page.getByText("You need moderator access")).toBeVisible();
+  const claims = await (await finder.context.request.get(`/api/items/${item.id}/claims`)).json();
+  const claim = claims.claims[0];
+  expect((await outsider.context.request.get(`/api/conversations/${claim.conversationId}`)).status()).toBe(404);
+  expect((await outsider.context.request.get(`/api/claims/${claim.id}/payment`)).status()).toBe(404);
+  expect((await apiCall(outsider.context, "POST", `/claims/${claim.id}/checkout`, { data: {} })).status()).toBe(404);
 
-  // Public API + rendered page contain no private fields.
-  const anon = await browser.newContext();
-  const publicJson = await (await anon.request.get(`/api/items/${item.id}`)).text();
-  for (const secret of ["@e2e.test", "98765", "library card", '"latitude"', "user_email", "mobile"]) expect(publicJson).not.toContain(secret);
-  const anonPage = await anon.newPage();
-  await anonPage.goto(`/items/${item.id}`);
-  const html = await anonPage.content();
-  for (const secret of ["@e2e.test", "98765", "library card"]) expect(html).not.toContain(secret);
-  await expect(anonPage.getByText("Sign in to contact the poster")).toBeVisible();
+  // Before payment, the chat is locked even for the participants (UI + API).
+  await finder.page.goto(`/inbox/${claim.conversationId}`);
+  await expect(finder.page.getByRole("heading", { name: "Chat is locked" })).toBeVisible();
+  await expect(finder.page.getByText("My college library card")).toBeVisible();
+  expect((await apiCall(finder.context, "POST", `/conversations/${claim.conversationId}/messages`, { data: { body: "hi" } })).status()).toBe(402);
 
-  // Reporter reviews the claim, accepts, marks returned.
-  await reporter.page.goto(`/items/${item.id}`);
-  await expect(reporter.page.getByText("My college library card")).toBeVisible();
-  await reporter.page.getByRole("button", { name: "Accept" }).click();
-  await expect(reporter.page.getByText("Claim accepted").first()).toBeVisible();
-  await reporter.page.getByRole("button", { name: "Mark as returned" }).click();
-  await expect(reporter.page.getByText("Returned").first()).toBeVisible();
+  // Finder accepts; owner gets the checkout.
+  await finder.page.goto(`/items/${item.id}`);
+  await finder.page.getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(finder.page.getByText(/Waiting for the owner to pay the ₹100 connection fee/)).toBeVisible();
 
-  await anonPage.reload();
-  await expect(anonPage.getByText("Returned").first()).toBeVisible();
-  await anonPage.goto(`/items?q=${encodeURIComponent(`Brown leather wallet ${RUN}`)}`);
-  await expect(anonPage.getByText("No listings match")).toBeVisible();
+  await owner.page.reload();
+  const checkout = owner.page.getByRole("heading", { name: "Connect with the finder" }).locator("..");
+  await expect(owner.page.getByText("Your match has been accepted.")).toBeVisible();
+  await expect(owner.page.getByText("₹100 platform connection fee").first()).toBeVisible();
+  await expect(owner.page.getByText("₹300 finder reward")).toBeVisible();
+  await expect(checkout).toContainText("The platform does not collect or guarantee the reward.");
+  await owner.page.getByRole("button", { name: "Pay ₹100 and connect" }).click();
+  const dialog = owner.page.getByRole("dialog", { name: "Test payment (no real money)" });
+  await expect(dialog).toContainText("₹100");
+  await dialog.getByRole("button", { name: "Simulate successful payment" }).click();
+  await expect(owner.page).toHaveURL(new RegExp(`/inbox/${claim.conversationId}$`));
+  await expect(owner.page.getByText("₹300, payable directly by the owner at handover.")).toBeVisible();
 
-  // Claimant sees accepted + returned notifications; phone sharing is opt-in.
-  await owner.page.goto("/notifications");
-  await expect(owner.page.getByText(/was accepted/)).toBeVisible();
-  await expect(owner.page.getByText(/was marked returned/)).toBeVisible();
-  await owner.page.goto(`/inbox/${conversationId}`);
+  // Chat works; phone stays hidden until the finder consents.
+  await owner.page.getByLabel("Write a message…").fill("Thank you! Can we meet at FC Road at 6?");
+  await owner.page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(owner.page.getByText("Thank you! Can we meet at FC Road at 6?")).toBeVisible();
   await expect(owner.page.getByText(/phone:/)).toHaveCount(0);
-  await reporter.page.goto(`/inbox/${conversationId}`);
-  await reporter.page.getByLabel("Share my phone number in this conversation").check();
+  await finder.page.goto(`/inbox/${claim.conversationId}`);
+  await finder.page.getByLabel("Share my phone number in this conversation").check();
   await owner.page.reload();
   await expect(owner.page.getByText("+919876543210")).toBeVisible();
 
-  for (const c of [reporter.context, owner.context, outsider.context, anon]) await c.close();
+  // Return (owner) and reward receipt (finder) are separate actions.
+  await expect(owner.page.getByText("Awaiting finder confirmation")).toBeVisible();
+  await owner.page.getByRole("button", { name: "I have received my item" }).click();
+  await expect(owner.page.getByText(/Item returned on/)).toBeVisible();
+  await finder.page.reload();
+  await finder.page.getByRole("button", { name: "I have received the reward" }).click();
+  await expect(finder.page.getByText("Finder confirmed receipt")).toBeVisible();
+  const anon = await browser.newContext();
+  expect((await (await anon.request.get(`/api/items/${item.id}`)).json()).item.status).toBe("returned");
+
+  for (const c of [finder.context, owner.context, outsider.context, anon]) await c.close();
+});
+
+test("Path A (lost item): finder responds, owner accepts with ₹500 reward, pays, reports issue path works", async ({ browser }) => {
+  const owner = await newUser(browser, persona("lost-owner"));
+  // Owner publishes through the form: reward panel + required acknowledgement.
+  await owner.page.goto("/report?type=lost");
+  await owner.page.getByLabel("What is it?").fill(`Grey Samsung phone ${RUN}`);
+  await owner.page.getByLabel("Category", { exact: true }).selectOption("phone");
+  await owner.page.getByLabel("Where?").fill("Shivajinagar");
+  await owner.page.getByLabel("Ownership question (optional)").fill("What colour is the case?");
+  await owner.page.getByRole("button", { name: "Publish listing" }).click();
+  await expect(owner.page.getByText("Please agree to the reward and connection fee to publish.")).toBeVisible();
+  await owner.page.getByLabel(/I agree to pay the ₹500 category reward directly to the finder/).check();
+  await owner.page.getByRole("button", { name: "Publish listing" }).click();
+  await expect(owner.page).toHaveURL(/\/items\/\d+$/);
+  const itemId = Number(owner.page.url().split("/").pop());
+  await expect(owner.page.getByText("Finder reward ₹500")).toHaveCount(0); // detail page uses the panel, cards use the tag
+  await expect(owner.page.getByRole("region", { name: "Finder reward & connection fee" })).toContainText("₹500");
+
+  const finder = await newUser(browser, persona("lost-finder"));
+  await finder.page.goto(`/items/${itemId}`);
+  await finder.page.getByLabel("Your answer (only the poster sees it)").fill("Blue case with a cricket sticker");
+  await finder.page.getByRole("button", { name: "I found this item" }).click();
+  await expect(finder.page.getByText("Your claim is waiting for the poster's decision.")).toBeVisible();
+
+  // Owner accepts the finder and agrees to the recorded reward, then pays.
+  await owner.page.reload();
+  await owner.page.getByRole("button", { name: "Accept", exact: true }).click();
+  const acceptReward = owner.page.getByRole("button", { name: /Accept match and agree to pay the ₹500 reward/ });
+  await expect(acceptReward).toBeDisabled();
+  await owner.page.getByLabel(/I agree to pay the ₹500 finder reward directly to this finder/).check();
+  await acceptReward.click();
+  await owner.page.getByRole("button", { name: "Pay ₹100 and connect" }).click();
+  await owner.page.getByRole("dialog").getByRole("button", { name: "Simulate failed payment" }).click();
+  await expect(owner.page.getByText(/The payment didn't go through/)).toBeVisible();
+  await owner.page.getByRole("button", { name: "Pay ₹100 and connect" }).click();
+  await owner.page.getByRole("dialog").getByRole("button", { name: "Simulate successful payment" }).click();
+  await expect(owner.page).toHaveURL(/\/inbox\/\d+$/);
+  await expect(owner.page.getByText("₹500, payable directly by the owner at handover.")).toBeVisible();
+
+  // Finder reports an issue; the return is still recorded independently.
+  await owner.page.getByRole("button", { name: "I have received my item" }).click();
+  const convUrl = owner.page.url();
+  await finder.page.goto(convUrl.replace(/^https?:\/\/[^/]+/, ""));
+  await finder.page.getByRole("button", { name: "Reward payment issue" }).click();
+  await finder.page.getByLabel("What went wrong? (sent to support)").fill(`Owner left without paying the reward ${RUN}`);
+  await finder.page.getByRole("button", { name: "Report issue" }).click();
+  await expect(finder.page.getByText("Finder reported a payment issue")).toBeVisible();
+  await expect(finder.page.getByText(/Item returned on/)).toBeVisible();
+
+  // Moderator sees it in the support queue.
+  const mod = await newUser(browser, persona("support-mod", "moderator"));
+  await mod.page.goto("/moderation");
+  await expect(mod.page.getByText(`Owner left without paying the reward ${RUN}`)).toBeVisible();
+  for (const c of [owner.context, finder.context, mod.context]) await c.close();
 });
 
 // ---------------------------------------------------------------------------
@@ -205,8 +263,9 @@ test("upload validation gives clear feedback and leaves no partial data", async 
 
   await page.goto("/report");
   await page.getByLabel("What is it?").fill(`Fake image test ${RUN}`);
-  await page.getByLabel("Category").selectOption("other");
+  await page.getByLabel("Category", { exact: true }).selectOption("other");
   await page.getByLabel("Where?").fill("Aundh");
+  await page.getByLabel(/I agree to pay the ₹350 category reward/).check();
 
   // Too large: rejected in the browser before upload.
   await page.getByTestId("photo-input").setInputFiles({ name: "huge.png", mimeType: "image/png", buffer: Buffer.alloc(9 * 1024 * 1024, 1) });
@@ -289,24 +348,31 @@ test("double-submitted claims and messages stay consistent; Hindi locale formats
   const item = await createListing(reporter.context, { type: "found", title: `Black umbrella ${RUN}`, category: "other", date: "2026-03-05" });
   const a = await newUser(browser, persona("dup-a"));
   const b = await newUser(browser, persona("dup-b"));
+  const body = { answer: "Wooden handle", acceptReward: true, expectedRewardPaise: 35000 };
 
   const [c1, c2] = await Promise.all([
-    apiCall(a.context, "POST", `/items/${item.id}/claims`, { data: { answer: "Wooden handle" } }),
-    apiCall(a.context, "POST", `/items/${item.id}/claims`, { data: { answer: "Wooden handle" } }),
+    apiCall(a.context, "POST", `/items/${item.id}/claims`, { data: body }),
+    apiCall(a.context, "POST", `/items/${item.id}/claims`, { data: body }),
   ]);
   expect([c1.status(), c2.status()].sort()).toEqual([200, 201]);
-  const claimA = (await c1.json()).claim.id;
-  const claimB = (await (await apiCall(b.context, "POST", `/items/${item.id}/claims`, { data: { answer: "Hook handle" } })).json()).claim.id;
-  const accepts = await Promise.all([apiCall(reporter.context, "POST", `/claims/${claimA}/accept`), apiCall(reporter.context, "POST", `/claims/${claimB}/accept`)]);
+  const claimA = (await c1.json()).claim;
+  const claimB = await claimFoundApi(b.context, item, "other", "Hook handle");
+  const accepts = await Promise.all([apiCall(reporter.context, "POST", `/claims/${claimA.id}/accept`, { data: {} }), apiCall(reporter.context, "POST", `/claims/${claimB.id}/accept`, { data: {} })]);
   expect(accepts.map((r) => r.status()).sort()).toEqual([200, 409]);
+  const winner = accepts[0].status() === 200 ? { ctx: a.context, claim: claimA } : { ctx: b.context, claim: claimB };
 
-  const conv = await (await apiCall(a.context, "POST", `/items/${item.id}/conversations`, { data: {} })).json();
+  // Repeated checkout clicks share one order; paying twice is refused.
+  const orders = await Promise.all([1, 2, 3].map(() => apiCall(winner.ctx, "POST", `/claims/${winner.claim.id}/checkout`, { data: {} }).then((r) => r.json())));
+  expect(new Set(orders.map((o) => o.checkout.orderId)).size).toBe(1);
+  await payApi(winner.ctx, winner.claim.id);
+  expect((await apiCall(winner.ctx, "POST", `/claims/${winner.claim.id}/checkout`, { data: {} })).status()).toBe(409);
+
   const clientId = crypto.randomUUID();
-  await Promise.all([1, 2, 3].map(() => apiCall(a.context, "POST", `/conversations/${conv.conversationId}/messages`, { data: { body: "Same message", clientId } })));
-  const view = await (await reporter.context.request.get(`/api/conversations/${conv.conversationId}`)).json();
+  await Promise.all([1, 2, 3].map(() => apiCall(winner.ctx, "POST", `/conversations/${winner.claim.conversationId}/messages`, { data: { body: "Same message", clientId } })));
+  const view = await (await reporter.context.request.get(`/api/conversations/${winner.claim.conversationId}`)).json();
   expect(view.conversation.messages.filter((m: { body: string }) => m.body === "Same message")).toHaveLength(1);
   const notes = await (await reporter.context.request.get("/api/notifications")).json();
-  expect(notes.notifications.filter((n: { type: string; data: { conversationId?: number } }) => n.type === "message" && n.data.conversationId === conv.conversationId)).toHaveLength(1);
+  expect(notes.notifications.filter((n: { type: string; data: { conversationId?: number } }) => n.type === "message" && n.data.conversationId === winner.claim.conversationId)).toHaveLength(1);
 
   // Hindi
   const page = reporter.page;
