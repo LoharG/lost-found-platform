@@ -34,6 +34,18 @@ async function main() {
     );
   });
 
+  // Hourly housekeeping: expired one-time codes and rate-limit windows.
+  const housekeeping = setInterval(() => {
+    pool
+      .query(
+        `WITH a AS (DELETE FROM otp_codes WHERE created_at < now() - interval '1 day'),
+              b AS (DELETE FROM rate_limits WHERE reset_at < now() - interval '1 hour')
+         SELECT 1`
+      )
+      .catch((error) => logger.warn({ err: { message: error.message } }, "Housekeeping failed"));
+  }, 60 * 60 * 1000);
+  housekeeping.unref();
+
   // Graceful shutdown for rolling deploys.
   const shutdown = (signal) => {
     logger.info({ signal }, "Shutting down");

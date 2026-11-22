@@ -25,5 +25,6 @@ services:
   frontend:
     environment:
       APP_URL: http://localhost:3100
+  proxy:
     ports: !override
-      - "3100:3000"
+      - "3100:80"

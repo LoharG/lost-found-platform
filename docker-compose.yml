@@ -1,6 +1,7 @@
 # Local development stack.
 #   docker compose up -d --build
-# App: http://localhost:${APP_HOST_PORT:-3000}   Mail inbox: http://localhost:8025
+# App: http://localhost:${APP_HOST_PORT:-3000} (Caddy -> web + /api, like the
+# production ingress)   Mail inbox: http://localhost:8025
 # Host ports are configurable, e.g. API_HOST_PORT=5001 if macOS AirPlay holds 5000.
 
 x-api-env: &api-env
@@ -86,10 +87,19 @@ services:
     environment:
       API_INTERNAL_URL: http://backend:5000
       APP_URL: ${APP_URL:-http://localhost:3000}
-    ports:
-      - "${APP_HOST_PORT:-3000}:3000"
     depends_on:
       backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2.10-alpine
+    ports:
+      - "${APP_HOST_PORT:-3000}:80"
+    volumes:
+      - ./deploy/local/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      frontend:
         condition: service_healthy
     restart: unless-stopped
 

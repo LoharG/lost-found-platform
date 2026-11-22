@@ -14,8 +14,13 @@ export async function serverApi<T>(path: string, { forwardCookies = true } = {})
     const cookieHeader = (await cookies()).toString();
     if (cookieHeader) headerList.Cookie = cookieHeader;
   }
-  const requestId = (await headers()).get("x-request-id");
+  const incoming = await headers();
+  const requestId = incoming.get("x-request-id");
   if (requestId) headerList["X-Request-Id"] = requestId;
+  // Pass the visitor's address on (set by the ingress/ALB or local Caddy) so
+  // API rate limits apply per visitor rather than to the web tier as a whole.
+  const forwardedFor = incoming.get("x-forwarded-for");
+  if (forwardedFor) headerList["X-Forwarded-For"] = forwardedFor;
 
   try {
     const response = await fetch(`${API}/api${path}`, { headers: headerList, cache: "no-store" });
