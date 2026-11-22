@@ -76,5 +76,6 @@ docs/                  deployment, data retention, release report
 ## Docs
 
 - [Deployment, migrations, rollout and rollback](docs/deployment.md)
+- [Finder rewards and the ₹100 paid connection](docs/payments.md)
 - [Data retention and deletion](docs/data-retention.md)
 - [Release report](docs/release-report.md)
