@@ -113,11 +113,21 @@ function loadConfig(env = process.env) {
           callbackURL: env.APPLE_CALLBACK_URL || `${appUrl}/api/auth/apple/callback`,
         }
       : null,
-    emailLogin: bool(env.EMAIL_LOGIN_ENABLED, Boolean(env.SMTP_URL) || isTest),
+    emailLogin: bool(env.EMAIL_LOGIN_ENABLED, Boolean(env.RESEND_API_KEY || env.SMTP_URL) || isTest),
     mail: {
+      // Resend (if RESEND_API_KEY is set) takes priority over SMTP.
+      resendApiKey: env.RESEND_API_KEY || "",
       smtpUrl: env.SMTP_URL || "",
-      from: env.MAIL_FROM || "Lost & Found <no-reply@localhost>",
-      notificationEmails: bool(env.NOTIFICATION_EMAILS, Boolean(env.SMTP_URL)),
+      from: env.EMAIL_FROM || env.MAIL_FROM || "Lost & Found <no-reply@localhost>",
+      timeoutMs: int(env.EMAIL_TIMEOUT_MS, 10000),
+      notificationEmails: bool(env.NOTIFICATION_EMAILS, Boolean(env.RESEND_API_KEY || env.SMTP_URL)),
+    },
+    otp: {
+      ttlMinutes: int(env.OTP_TTL_MINUTES, 5),
+      resendCooldownSeconds: int(env.OTP_RESEND_COOLDOWN_SECONDS, 60),
+      maxAttempts: int(env.OTP_MAX_ATTEMPTS, 5),
+      maxRequestsPerEmail: int(env.OTP_MAX_REQUESTS_PER_EMAIL, 5),
+      requestWindowMinutes: int(env.OTP_REQUEST_WINDOW_MINUTES, 30),
     },
     storage: {
       driver: storageDriver,
