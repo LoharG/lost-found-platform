@@ -4,6 +4,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { Header } from "@/components/Header";
+import { PageViewTracker } from "@/components/PageViewTracker";
 import { I18nProvider } from "@/lib/i18n/client";
 import { getT } from "@/lib/i18n/server";
 
@@ -42,6 +43,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </a>
         <I18nProvider locale={locale}>
           <AuthProvider>
+            <PageViewTracker />
             <Header />
             <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">
               {children}

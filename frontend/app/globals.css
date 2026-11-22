@@ -20,6 +20,8 @@
   --warn-bg: #fffaeb;
   --info-bg: #eff4ff;
   --focus: #2563eb;
+  --chart-1: #1d4ed8;
+  --grid: #e8ebef;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +43,8 @@
     --warn-bg: #2a2010;
     --info-bg: #142036;
     --focus: #8fb2ff;
+    --chart-1: #5b8cf5;
+    --grid: #232b35;
   }
 }
 
@@ -61,6 +65,8 @@
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
   --color-info-bg: var(--info-bg);
+  --color-chart-1: var(--chart-1);
+  --color-grid: var(--grid);
   --font-sans: var(--font-geist-sans), "Noto Sans Devanagari", system-ui, sans-serif;
 }
 

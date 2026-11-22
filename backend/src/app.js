@@ -25,6 +25,7 @@ const { notificationRoutes } = require("./routes/notifications");
 const { moderationRoutes } = require("./routes/moderation");
 const { accountRoutes } = require("./routes/account");
 const { mediaRoutes } = require("./routes/media");
+const { analyticsRoutes } = require("./routes/analytics");
 
 const REQUEST_ID = /^[A-Za-z0-9._-]{8,128}$/;
 
@@ -156,6 +157,7 @@ function createApp({ config, pool, logger, storage = createStorage(config.storag
   app.use("/api", moderationRoutes(deps));
   app.use("/api", accountRoutes(deps));
   app.use("/api", mediaRoutes(deps));
+  app.use("/api", analyticsRoutes(deps));
   app.use(mediaRoutes(deps)); // also blocks legacy /uploads/* at the root
 
   app.use(notFound);

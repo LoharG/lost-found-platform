@@ -39,7 +39,9 @@ async function main() {
     pool
       .query(
         `WITH a AS (DELETE FROM otp_codes WHERE created_at < now() - interval '1 day'),
-              b AS (DELETE FROM rate_limits WHERE reset_at < now() - interval '1 hour')
+              b AS (DELETE FROM rate_limits WHERE reset_at < now() - interval '1 hour'),
+              c AS (DELETE FROM analytics_salts WHERE day < (now() AT TIME ZONE 'UTC')::date - 1),
+              d AS (DELETE FROM page_views WHERE day < (now() AT TIME ZONE 'UTC')::date - 400)
          SELECT 1`
       )
       .catch((error) => logger.warn({ err: { message: error.message } }, "Housekeeping failed"));

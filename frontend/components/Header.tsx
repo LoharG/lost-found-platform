@@ -86,9 +86,14 @@ export function Header() {
             </Link>
           ))}
           {isModerator && (
-            <Link href="/moderation" className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
-              {t("nav.moderation")}
-            </Link>
+            <>
+              <Link href="/admin" className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
+                {t("nav.admin")}
+              </Link>
+              <Link href="/moderation" className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-muted">
+                {t("nav.moderation")}
+              </Link>
+            </>
           )}
         </nav>
 
@@ -167,11 +172,18 @@ export function Header() {
               </li>
             ))}
             {isModerator && (
-              <li>
-                <Link href="/moderation" className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
-                  {t("nav.moderation")}
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link href="/admin" className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
+                    {t("nav.admin")}
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/moderation" className="flex min-h-11 items-center rounded-lg px-2 font-medium hover:bg-surface-muted">
+                    {t("nav.moderation")}
+                  </Link>
+                </li>
+              </>
             )}
             {user ? (
               <>
