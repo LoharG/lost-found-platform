@@ -45,7 +45,7 @@ function createNotifier({ pool, mailer, config, logger }) {
         await pool.query(
           `INSERT INTO notification_deliveries (notification_id, channel, status, detail)
            VALUES ($1, 'email', $2, $3) ON CONFLICT (notification_id, channel) DO NOTHING`,
-          [notification.id, result.status, result.detail || null]
+          [notification.id, ["sent", "failed", "skipped"].includes(result.status) ? result.status : "failed", result.messageId || result.error || null]
         );
       } catch (error) {
         logger.error({ err: error, notificationId: notification.id }, "Notification delivery failed");

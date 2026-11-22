@@ -56,16 +56,22 @@ function testEnv(overrides = {}) {
 }
 
 // Captures outbound email instead of sending it.
+// Test-only email adapter: captures messages; `mode` simulates provider outcomes.
 function createCapturingMailer() {
   const sent = [];
-  return {
+  const mailer = {
     sent,
+    mode: "sent", // "sent" | "failed" | "unconfirmed"
     configured: true,
+    provider: "test",
     async send(message) {
+      if (mailer.mode === "failed") return { status: "failed", provider: "test", error: "validation_error: simulated rejection" };
       sent.push(message);
-      return { status: "sent", detail: `test-${sent.length}` };
+      if (mailer.mode === "unconfirmed") return { status: "unconfirmed", provider: "test", error: "timeout" };
+      return { status: "sent", provider: "test", messageId: `test-msg-${sent.length}` };
     },
   };
+  return mailer;
 }
 
 async function setup(envOverrides = {}) {

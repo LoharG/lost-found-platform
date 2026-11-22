@@ -294,7 +294,7 @@ describe("migration grandfathering", () => {
       const { createLogger } = require("../src/logger");
       const { runMigrations } = require("../src/migrate");
       const config = loadConfig(testEnv({ DATABASE_URL: db.url }));
-      assert.deepEqual(await runMigrations(pool, createLogger(config)), ["005_rewards_and_paid_connections"]);
+      assert.deepEqual(await runMigrations(pool, createLogger(config)), ["005_rewards_and_paid_connections", "006_otp_challenges"]);
       const conv = (await pool.query("SELECT unlocked_at, unlock_source FROM conversations")).rows[0];
       assert.ok(conv.unlocked_at);
       assert.equal(conv.unlock_source, "grandfathered");

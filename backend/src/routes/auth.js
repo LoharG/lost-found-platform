@@ -9,6 +9,13 @@ const { resolveIdentity } = require("../auth/accounts");
 
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
 
+// Only same-site relative paths are allowed as post-login destinations.
+function safeRedirect(next) {
+  if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
+  if (/[\u0000-\u001f]/.test(next) || /^\/[^/]*:/.test(next)) return "/";
+  return next;
+}
+
 function loginAndRespond(req, res, next, user) {
   // passport >= 0.6 regenerates the session ID on login (session fixation).
   req.login(user, (error) => {
@@ -64,24 +71,38 @@ function authRoutes({ pool, config, passport, otp, limits, logger }) {
   router.post("/email/request", limits.otpRequest, async (req, res) => {
     if (!config.emailLogin) throw new HttpError(503, "Email sign-in is not configured", "email_unconfigured");
     const email = emailSchema.parse(req.body?.email);
-    const result = await otp.requestCode(email);
-    if (result.reason === "too_many_requests") {
-      throw new HttpError(429, "Too many codes requested. Please wait 15 minutes.", "rate_limited");
-    }
-    // Same response whether or not the address has an account.
-    res.status(202).json({ ok: true, delivered: result.sent });
+    const challenge = await otp.request(email);
+    // Same shape whether or not the address has an account. The provider
+    // message id is recorded server-side only.
+    res.status(202).json({
+      challengeId: challenge.challengeId,
+      email: challenge.email,
+      expiresAt: challenge.expiresAt,
+      resendAvailableAt: challenge.resendAvailableAt,
+      delivery: challenge.delivery,
+    });
   });
 
   router.post("/email/verify", limits.otpVerify, async (req, res, next) => {
     if (!config.emailLogin) throw new HttpError(503, "Email sign-in is not configured", "email_unconfigured");
-    const { email, code } = z
-      .object({ email: emailSchema, code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code") })
+    const input = z
+      .object({
+        challengeId: z.string().uuid("Request a new code"),
+        code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code"),
+        email: emailSchema.optional(),
+        next: z.string().max(500).optional(),
+      })
+      .strict()
       .parse(req.body || {});
-    if (!(await otp.verifyCode(email, code))) {
-      throw new HttpError(400, "That code is incorrect or has expired", "invalid_code");
-    }
+    const email = await otp.verify(input.challengeId, input.code, input.email);
     const user = await resolveIdentity(pool, { provider: "email", subject: email, email, emailVerified: true });
-    loginAndRespond(req, res, next, user);
+    // Proving control of the inbox verifies this address on the account.
+    await pool.query("UPDATE users SET email_verified = TRUE, updated_at = now() WHERE id = $1 AND lower(email) = $2", [user.id, email]);
+    user.email_verified = user.email_verified || (user.email || "").toLowerCase() === email;
+    req.login(user, (error) => {
+      if (error) return next(error);
+      return res.json({ user: selfUser(user), csrfToken: issueCsrfToken(req), redirectTo: safeRedirect(input.next) });
+    });
   });
 
   // --- Logout (POST + CSRF) ------------------------------------------------
@@ -120,4 +141,4 @@ function authRoutes({ pool, config, passport, otp, limits, logger }) {
   return router;
 }
 
-module.exports = { authRoutes };
+module.exports = { authRoutes, safeRedirect };
