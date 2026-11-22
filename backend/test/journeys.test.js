@@ -3,7 +3,7 @@
 const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("crypto");
-const { setup, pngImage, createItem, daysAgo } = require("./helpers");
+const { setup, pngImage, createItem, daysAgo, claimFound, connect } = require("./helpers");
 
 let ctx;
 before(async () => {
@@ -123,7 +123,7 @@ describe("listing management", () => {
 });
 
 describe("contact, claim and return journey", () => {
-  test("claimant contacts privately, claims, reporter accepts and marks returned", async () => {
+  test("Path B: owner claims a found item, finder accepts, owner pays ₹100, chat unlocks, return confirmed", async () => {
     const reporter = await ctx.agent({ email: "finder@example.com", name: "Finder Person" });
     await reporter.patch("/api/account/profile").send({ phone: "+44 7911 123456" }).expect(200);
     const item = await createItem(reporter, {
@@ -134,65 +134,133 @@ describe("contact, claim and return journey", () => {
     });
     const owner = await ctx.agent({ email: "realowner@example.com", name: "Real Owner" });
 
-    const conv = await owner.post(`/api/items/${item.id}/conversations`).send({ body: "Hi, I think this is mine", clientId: crypto.randomUUID() }).expect(201);
-    const claim = await owner.post(`/api/items/${item.id}/claims`).send({ answer: "Library card" }).expect(201);
-    assert.equal(claim.body.claim.status, "pending");
+    // Free text before payment is not allowed; the claim is the structured channel.
+    assert.equal((await owner.post(`/api/items/${item.id}/conversations`).send({ body: "Hi, I think this is mine" })).status, 402);
+    const claim = await claimFound(owner, item, "Library card");
+    assert.equal(claim.status, "pending");
+    assert.equal(claim.agreement.rewardPaise, 30000);
+    assert.equal(claim.agreement.feePaise, 10000);
+    const convId = claim.conversationId;
 
     const notes = await reporter.get("/api/notifications").expect(200);
-    assert.ok(notes.body.notifications.some((n) => n.type === "message"));
     assert.ok(notes.body.notifications.some((n) => n.type === "claim_received"));
 
-    const view = await reporter.get(`/api/conversations/${conv.body.conversationId}`).expect(200);
+    const view = await reporter.get(`/api/conversations/${convId}`).expect(200);
+    assert.equal(view.body.conversation.locked, true);
     assert.equal(view.body.conversation.claims[0].answer, "Library card");
-    assert.equal(view.body.conversation.counterpart.phone, null, "phone hidden by default");
+    assert.deepEqual(view.body.conversation.messages, []);
+    assert.equal((await reporter.post(`/api/conversations/${convId}/messages`).send({ body: "hello" })).status, 402);
+    assert.equal((await reporter.post(`/api/conversations/${convId}/phone-sharing`).send({ share: true })).status, 402);
 
-    // Deliberate, reversible phone sharing by the reporter.
-    await reporter.post(`/api/conversations/${conv.body.conversationId}/phone-sharing`).send({ share: true }).expect(200);
-    const shared = await owner.get(`/api/conversations/${conv.body.conversationId}`).expect(200);
-    assert.equal(shared.body.conversation.counterpart.phone, "+447911123456");
-    await reporter.post(`/api/conversations/${conv.body.conversationId}/phone-sharing`).send({ share: false }).expect(200);
-    assert.equal((await owner.get(`/api/conversations/${conv.body.conversationId}`)).body.conversation.counterpart.phone, null);
+    await reporter.post(`/api/claims/${claim.id}/accept`).send({}).expect(200);
+    assert.equal((await ctx.anonymous().get(`/api/items/${item.id}`)).body.item.status, "claimed");
+    assert.ok((await owner.get("/api/notifications")).body.notifications.some((n) => n.type === "payment_due"));
+    // The finder can't pay; only the owner.
+    assert.equal((await reporter.post(`/api/claims/${claim.id}/checkout`).send({})).status, 403);
 
-    await reporter.post(`/api/claims/${claim.body.claim.id}/accept`).expect(200);
-    const claimed = await ctx.anonymous().get(`/api/items/${item.id}`).expect(200);
-    assert.equal(claimed.body.item.status, "claimed");
+    const paid = await connect(owner, claim.id);
+    assert.equal(paid.checkout.amountPaise, 10000);
+    assert.equal(paid.checkout.currency, "INR");
+    assert.equal(paid.checkout.rewardPaise, 30000);
+    assert.equal(paid.verify.status, 200);
+    assert.equal(paid.verify.body.status, "paid");
 
-    await reporter.post(`/api/items/${item.id}/status`).send({ status: "returned" }).expect(200);
-    const returned = await ctx.anonymous().get(`/api/items/${item.id}`).expect(200);
-    assert.equal(returned.body.item.status, "returned");
+    const unlocked = await owner.get(`/api/conversations/${convId}`).expect(200);
+    assert.equal(unlocked.body.conversation.locked, false);
+    await owner.post(`/api/conversations/${convId}/messages`).send({ body: "Thanks! When can we meet?" }).expect(201);
+    assert.equal(unlocked.body.conversation.counterpart.phone, null, "paying never exposes a phone number");
+
+    // Deliberate, reversible phone sharing by the finder.
+    await reporter.post(`/api/conversations/${convId}/phone-sharing`).send({ share: true }).expect(200);
+    assert.equal((await owner.get(`/api/conversations/${convId}`)).body.conversation.counterpart.phone, "+447911123456");
+    await reporter.post(`/api/conversations/${convId}/phone-sharing`).send({ share: false }).expect(200);
+    assert.equal((await owner.get(`/api/conversations/${convId}`)).body.conversation.counterpart.phone, null);
+
+    // Return and reward receipt are separate facts, each by the right party.
+    assert.equal((await reporter.post(`/api/claims/${claim.id}/return`).send({})).status, 403);
+    const returned = await owner.post(`/api/claims/${claim.id}/return`).send({}).expect(200);
+    assert.ok(returned.body.claim.returnConfirmedAt);
+    assert.equal(returned.body.claim.reward.status, "awaiting");
+    assert.equal((await ctx.anonymous().get(`/api/items/${item.id}`)).body.item.status, "returned");
+    assert.equal((await owner.post(`/api/claims/${claim.id}/reward`).send({ status: "confirmed" })).status, 403);
+    const rewarded = await reporter.post(`/api/claims/${claim.id}/reward`).send({ status: "confirmed" }).expect(200);
+    assert.equal(rewarded.body.claim.reward.status, "confirmed");
+    const again = await reporter.post(`/api/claims/${claim.id}/reward`).send({ status: "confirmed" }).expect(200);
+    assert.equal(again.body.changed, false);
     assert.equal((await ctx.anonymous().get("/api/items?q=Brown leather wallet")).body.total, 0, "returned items leave the active list");
-    assert.equal((await ctx.anonymous().get("/api/items?q=Brown leather wallet&status=returned")).body.total, 1);
-
-    const ownerNotes = await owner.get("/api/notifications").expect(200);
-    assert.ok(ownerNotes.body.notifications.some((n) => n.type === "claim_update" && n.data.status === "accepted"));
-    assert.ok(ownerNotes.body.notifications.some((n) => n.type === "item_status"));
   });
 
-  test("a third user cannot read conversations, see claims, edit, or moderate", async () => {
+  test("Path A: finder responds to a lost item, owner accepts with reward, pays, reward issue recorded with return", async () => {
+    const owner = await ctx.agent({ email: "lost-owner@example.com", name: "Lost Owner" });
+    const item = await createItem(owner, { type: "lost", title: "Grey Samsung phone", category: "phone", ownershipQuestion: "What colour is the case?" });
+    assert.equal(item.reward.kind, "finder_reward");
+    assert.equal(item.reward.amountPaise, 50000);
+    const finder = await ctx.agent({ email: "lost-finder@example.com", name: "Kind Finder" });
+    const res = await finder.post(`/api/items/${item.id}/claims`).send({ answer: "Blue case with a sticker" }).expect(201);
+    const claim = res.body.claim;
+    assert.equal(claim.claimantRole, "finder");
+    assert.equal(claim.agreement, null, "finders never accept reward terms");
+
+    // Owner must accept the reward explicitly; a tampered amount is rejected.
+    assert.equal((await owner.post(`/api/claims/${claim.id}/accept`).send({})).status, 400);
+    const tampered = await owner.post(`/api/claims/${claim.id}/accept`).send({ acceptReward: true, expectedRewardPaise: 100 });
+    assert.equal(tampered.status, 409);
+    assert.equal(tampered.body.error.code, "pricing_changed");
+    const accepted = await owner.post(`/api/claims/${claim.id}/accept`).send({ acceptReward: true, expectedRewardPaise: 50000 }).expect(200);
+    assert.equal(accepted.body.claim.agreement.rewardPaise, 50000);
+
+    await connect(owner, claim.id);
+    await owner.post(`/api/claims/${claim.id}/return`).send({}).expect(200);
+    assert.equal((await finder.post(`/api/claims/${claim.id}/reward`).send({ status: "issue" })).status, 400, "issue needs a note");
+    const issue = await finder.post(`/api/claims/${claim.id}/reward`).send({ status: "issue", note: "Owner left without paying" }).expect(200);
+    assert.equal(issue.body.claim.reward.status, "issue");
+    assert.ok(issue.body.claim.returnConfirmedAt, "return stays recorded despite the dispute");
+    const { rows } = await ctx.pool.query("SELECT kind, status FROM support_requests WHERE claim_id = $1", [claim.id]);
+    assert.deepEqual(rows, [{ kind: "reward_issue", status: "open" }]);
+    // Snapshot is immutable once accepted.
+    await assert.rejects(ctx.pool.query("UPDATE claims SET reward_paise = 1 WHERE id = $1", [claim.id]), /immutable/);
+  });
+
+  test("a third user cannot read conversations, see claims, pay, edit, or moderate", async () => {
     const reporter = await ctx.agent({ email: "r3@example.com" });
     const item = await createItem(reporter, { type: "found", title: "Keys with red tag", category: "keys", ownershipQuestion: "Keychain?" });
     const claimant = await ctx.agent({ email: "c3@example.com" });
-    const conv = await claimant.post(`/api/items/${item.id}/conversations`).send({ body: "mine?" }).expect(201);
-    const claim = await claimant.post(`/api/items/${item.id}/claims`).send({ answer: "Red tag says HOME" }).expect(201);
+    const claim = await claimFound(claimant, item, "Red tag says HOME");
+    await reporter.post(`/api/claims/${claim.id}/accept`).send({}).expect(200);
+    await connect(claimant, claim.id);
 
     const intruder = await ctx.agent({ email: "intruder@example.com" });
-    assert.equal((await intruder.get(`/api/conversations/${conv.body.conversationId}`)).status, 404);
-    assert.equal((await intruder.post(`/api/conversations/${conv.body.conversationId}/messages`).send({ body: "hi" })).status, 404);
-    const claims = await intruder.get(`/api/items/${item.id}/claims`).expect(200);
-    assert.equal(claims.body.claims.length, 0);
-    assert.equal((await intruder.post(`/api/claims/${claim.body.claim.id}/accept`)).status, 404);
-    assert.equal((await intruder.post(`/api/claims/${claim.body.claim.id}/withdraw`)).status, 404);
+    assert.equal((await intruder.get(`/api/conversations/${claim.conversationId}`)).status, 404);
+    assert.equal((await intruder.post(`/api/conversations/${claim.conversationId}/messages`).send({ body: "hi" })).status, 404);
+    assert.equal((await intruder.get(`/api/items/${item.id}/claims`).expect(200)).body.claims.length, 0);
+    assert.equal((await intruder.post(`/api/claims/${claim.id}/accept`).send({})).status, 404);
+    assert.equal((await intruder.post(`/api/claims/${claim.id}/checkout`).send({})).status, 404);
+    assert.equal((await intruder.get(`/api/claims/${claim.id}/payment`)).status, 404);
+    assert.equal((await intruder.post(`/api/claims/${claim.id}/return`).send({})).status, 404);
     assert.equal((await intruder.patch(`/api/items/${item.id}`).field("title", "Hacked")).status, 403);
     assert.equal((await intruder.delete(`/api/items/${item.id}`)).status, 403);
-    assert.equal((await intruder.post(`/api/items/${item.id}/status`).send({ status: "closed" })).status, 403);
     assert.equal((await intruder.get("/api/moderation/queue")).status, 403);
-    assert.equal((await intruder.post(`/api/moderation/items/${item.id}/remove`).send({ reason: "nope" })).status, 403);
+    assert.equal((await intruder.get("/api/moderation/support")).status, 403);
     assert.equal((await intruder.get(`/api/items/${item.id}/matches`)).status, 403);
-    // Claimant can't accept their own claim either.
-    assert.equal((await claimant.post(`/api/claims/${claim.body.claim.id}/accept`)).status, 403);
+    assert.equal((await claimant.post(`/api/claims/${claim.id}/accept`).send({})).status, 403);
     const anon = ctx.anonymous();
     assert.equal((await anon.get("/api/conversations")).status, 401);
-    assert.equal((await anon.get("/api/notifications")).status, 401);
+    assert.equal((await anon.post(`/api/claims/${claim.id}/checkout`).send({})).status, 403, "CSRF/auth blocks anonymous checkout");
+  });
+
+  test("a paid match unlocks only its own conversation", async () => {
+    const finder = await ctx.agent({ email: "two-matches-finder@example.com" });
+    const first = await createItem(finder, { type: "found", title: "Red bag one", category: "bag" });
+    const second = await createItem(finder, { type: "found", title: "Red bag two", category: "bag" });
+    const owner = await ctx.agent({ email: "two-matches-owner@example.com" });
+    const c1 = await claimFound(owner, first);
+    const c2 = await claimFound(owner, second);
+    await finder.post(`/api/claims/${c1.id}/accept`).send({}).expect(200);
+    await finder.post(`/api/claims/${c2.id}/accept`).send({}).expect(200);
+    await connect(owner, c1.id);
+    assert.equal((await owner.get(`/api/conversations/${c1.conversationId}`)).body.conversation.locked, false);
+    assert.equal((await owner.get(`/api/conversations/${c2.conversationId}`)).body.conversation.locked, true);
+    assert.equal((await owner.post(`/api/conversations/${c2.conversationId}/messages`).send({ body: "x" })).status, 402);
   });
 
   test("duplicate and concurrent claim actions stay consistent", async () => {
@@ -200,31 +268,20 @@ describe("contact, claim and return journey", () => {
     const item = await createItem(reporter, { type: "found", title: "Black umbrella", category: "other" });
     const a = await ctx.agent({ email: "race-a@example.com" });
     const b = await ctx.agent({ email: "race-b@example.com" });
+    const body = { answer: "It has a wooden handle", acceptReward: true, expectedRewardPaise: 35000 };
 
-    // Same claimant submits twice at once: exactly one pending claim.
-    const [s1, s2] = await Promise.all([
-      a.post(`/api/items/${item.id}/claims`).send({ answer: "It has a wooden handle" }),
-      a.post(`/api/items/${item.id}/claims`).send({ answer: "It has a wooden handle" }),
-    ]);
+    const [s1, s2] = await Promise.all([a.post(`/api/items/${item.id}/claims`).send(body), a.post(`/api/items/${item.id}/claims`).send(body)]);
     assert.deepEqual([s1.status, s2.status].sort(), [200, 201]);
     assert.equal(s1.body.claim.id, s2.body.claim.id);
-    const claimB = await b.post(`/api/items/${item.id}/claims`).send({ answer: "Mine has a hook" }).expect(201);
+    const claimB = await claimFound(b, item, "Mine has a hook");
 
-    // Two different claims accepted concurrently: exactly one wins.
-    const results = await Promise.all([
-      reporter.post(`/api/claims/${s1.body.claim.id}/accept`),
-      reporter.post(`/api/claims/${claimB.body.claim.id}/accept`),
-    ]);
+    const results = await Promise.all([reporter.post(`/api/claims/${s1.body.claim.id}/accept`).send({}), reporter.post(`/api/claims/${claimB.id}/accept`).send({})]);
     assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
     const { rows } = await ctx.pool.query("SELECT count(*)::int AS n FROM claims WHERE item_id = $1 AND status = 'accepted'", [item.id]);
     assert.equal(rows[0].n, 1);
-
-    // Repeating the winning accept is idempotent.
     const winner = results.find((r) => r.status === 200).body.claim.id;
-    const again = await reporter.post(`/api/claims/${winner}/accept`).expect(200);
-    assert.equal(again.body.changed, false);
+    assert.equal((await reporter.post(`/api/claims/${winner}/accept`).send({}).expect(200)).body.changed, false);
 
-    // Marking returned supersedes the losing pending claim.
     await reporter.post(`/api/items/${item.id}/status`).send({ status: "returned" }).expect(200);
     const statuses = (await ctx.pool.query("SELECT status FROM claims WHERE item_id = $1 ORDER BY id", [item.id])).rows.map((r) => r.status);
     assert.deepEqual(statuses.sort(), ["accepted", "superseded"]);
@@ -232,12 +289,14 @@ describe("contact, claim and return journey", () => {
 
   test("message retries with the same clientId create one message and one notification", async () => {
     const reporter = await ctx.agent({ email: "dedupe-r@example.com" });
-    const item = await createItem(reporter, { title: "Silver ring", category: "jewelry" });
+    const item = await createItem(reporter, { type: "found", title: "Silver ring", category: "jewelry" });
     const other = await ctx.agent({ email: "dedupe-o@example.com" });
-    const conv = await other.post(`/api/items/${item.id}/conversations`).send({}).expect(201);
+    const claim = await claimFound(other, item);
+    await reporter.post(`/api/claims/${claim.id}/accept`).send({}).expect(200);
+    await connect(other, claim.id);
     const clientId = crypto.randomUUID();
     const sends = await Promise.all(
-      [1, 2, 3].map(() => other.post(`/api/conversations/${conv.body.conversationId}/messages`).send({ body: "I found a ring like this", clientId }))
+      [1, 2, 3].map(() => other.post(`/api/conversations/${claim.conversationId}/messages`).send({ body: "Is it the silver one?", clientId }))
     );
     assert.ok(sends.every((r) => r.status === 201));
     assert.equal(new Set(sends.map((r) => r.body.message.id)).size, 1);

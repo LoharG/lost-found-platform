@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const supertest = require("supertest");
 const { resolveIdentity } = require("../src/auth/accounts");
-const { setup, pngImage, createItem, storedFiles } = require("./helpers");
+const { setup, pngImage, createItem, storedFiles, claimFound } = require("./helpers");
 
 let ctx;
 before(async () => {
@@ -110,7 +110,7 @@ describe("profile, export and deletion", () => {
     const item = await createItem(http, { title: "Leaving bag", category: "bag" }, [await pngImage()]);
     const other = await ctx.agent({ email: "stays@example.com" });
     const otherItem = await createItem(other, { type: "found", title: "Found hat", category: "clothing" });
-    await http.post(`/api/items/${otherItem.id}/claims`).send({ answer: "Blue hat" }).expect(201);
+    await claimFound(http, otherItem, "Blue hat");
 
     const exported = await http.get("/api/account/export").expect(200);
     assert.match(exported.headers["content-disposition"], /attachment/);
