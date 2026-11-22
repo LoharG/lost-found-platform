@@ -1,5 +1,7 @@
 "use strict";
 
+const { CATEGORY_REWARD_PAISE, CURRENCY } = require("./pricing");
+
 // Explicit response shapes. Public output is built field-by-field from an
 // allow-list so new database columns never leak by accident. Reporter email,
 // phone number, precise coordinates, claim answers and message content are
@@ -42,6 +44,18 @@ function publicImage(image) {
   };
 }
 
+// Reward shown on cards and detail pages. A lost listing whose owner accepted
+// the reward at posting shows a committed "finder reward" (from its snapshot);
+// everything else shows the current category reward, without implying any
+// owner has committed to it.
+function rewardInfo(row) {
+  if (row.type === "lost" && row.reward_accepted_at && row.reward_paise) {
+    return { kind: "finder_reward", amountPaise: row.reward_paise, currency: CURRENCY };
+  }
+  const amount = CATEGORY_REWARD_PAISE[row.category];
+  return amount ? { kind: "category_reward", amountPaise: amount, currency: CURRENCY } : null;
+}
+
 function publicItem(row, images = []) {
   return {
     id: row.id,
@@ -60,6 +74,8 @@ function publicItem(row, images = []) {
     updatedAt: timestamp(row.updated_at),
     images: images.map(publicImage),
     reporter: { displayName: displayName(row.user_name) },
+    reward: rewardInfo(row),
+    categoryConfirmed: row.category_confirmed !== false,
   };
 }
 
@@ -88,4 +104,4 @@ function selfUser(row) {
   };
 }
 
-module.exports = { displayName, publicItem, ownerItem, publicImage, selfUser, isoDate, timestamp };
+module.exports = { displayName, rewardInfo, publicItem, ownerItem, publicImage, selfUser, isoDate, timestamp };

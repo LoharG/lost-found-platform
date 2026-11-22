@@ -166,7 +166,8 @@ function isModerator(user) {
 // visible only to their owner and to moderators.
 function assertVisible(item, user) {
   if (!item || item.deleted_at) throw new HttpError(404, "This listing does not exist or was deleted", "item_not_found");
-  if (item.moderation_state === "removed" && !(user && (user.id === item.user_id || isModerator(user)))) {
+  if (item.moderation_state !== "visible" && !(user && (user.id === item.user_id || isModerator(user)))) {
+    if (item.moderation_state === "pending") throw new HttpError(404, "This listing is waiting for review", "item_pending");
     throw new HttpError(410, "This listing was removed for violating our guidelines", "item_removed");
   }
   return item;
@@ -190,6 +191,9 @@ function itemInputSchema({ partial }) {
     latitude: optionalNumber(-90, 90),
     longitude: optionalNumber(-180, 180),
     ownershipQuestion: z.string().trim().max(300),
+    acceptRewardTerms: z.preprocess((v) => v === true || v === "true", z.boolean()),
+    expectedRewardPaise: z.coerce.number().int().positive(),
+    reviewRequested: z.preprocess((v) => v === true || v === "true", z.boolean()),
     removeImageIds: z.preprocess(
       (value) => (Array.isArray(value) ? value : String(value || "").split(",").filter(Boolean)),
       z.array(z.coerce.number().int().positive()).max(20)
@@ -197,7 +201,7 @@ function itemInputSchema({ partial }) {
   };
   const optionalKeys = partial
     ? Object.keys(shape)
-    : ["description", "latitude", "longitude", "ownershipQuestion", "removeImageIds"];
+    : ["description", "latitude", "longitude", "ownershipQuestion", "removeImageIds", "acceptRewardTerms", "expectedRewardPaise", "reviewRequested"];
   const schema = z
     .object(Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, optionalKeys.includes(key) ? value.optional() : value])))
     .strict();

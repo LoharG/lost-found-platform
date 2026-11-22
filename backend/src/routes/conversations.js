@@ -1,9 +1,12 @@
 "use strict";
 
 // Private contact between a listing's reporter and one other user.
-// Only the two participants can read or post. Phone numbers are never shown
-// unless the owning participant explicitly turns sharing on for that single
-// conversation, and they can turn it off again at any time.
+// Only the two participants can read or post. New conversations start LOCKED:
+// messages, phone sharing and handover details unlock only after the owner
+// pays the ₹100 connection fee for the accepted match (or for conversations
+// that existed before paid connections, which were grandfathered).
+// Phone numbers are never shown unless their owner turns sharing on for that
+// single conversation; paying never exposes a number by itself.
 
 const crypto = require("crypto");
 const express = require("express");
@@ -13,6 +16,13 @@ const { HttpError } = require("../middleware/errors");
 const { requireUser } = require("../middleware/security");
 const { displayName, publicItem, timestamp } = require("../services/serializers");
 const { loadItem, parseId, assertVisible, imagesFor } = require("../services/items");
+const { isUnlocked } = require("../services/connections");
+
+function assertUnlocked(conversation) {
+  if (!isUnlocked(conversation)) {
+    throw new HttpError(402, "This conversation unlocks after the owner pays the ₹100 connection fee for an accepted match", "connection_locked");
+  }
+}
 
 async function ensureConversation(db, item, participantId) {
   const { rows } = await db.query(
@@ -97,7 +107,10 @@ function conversationRoutes({ pool, notifier, limits }) {
       if (!item.user_id) throw new HttpError(409, "The person who posted this listing has left", "reporter_gone");
       const conversation = await ensureConversation(db, item, req.user.id);
       let notification = null;
-      if (input.body) ({ notification } = await postMessage(db, conversation, req.user, input));
+      if (input.body) {
+        assertUnlocked(conversation);
+        ({ notification } = await postMessage(db, conversation, req.user, input));
+      }
       return { conversation, notification };
     });
     await notifier.deliver([result.notification]);
@@ -131,8 +144,9 @@ function conversationRoutes({ pool, notifier, limits }) {
           available: !row.deleted_at && row.moderation_state === "visible",
         },
         role: row.reporter_id === req.user.id ? "reporter" : "participant",
+        locked: !row.unlocked_at,
         counterpart: { displayName: displayName(row.other_name) },
-        lastMessage: row.last_body ? row.last_body.slice(0, 140) : null,
+        lastMessage: row.unlocked_at && row.last_body ? row.last_body.slice(0, 140) : null,
         lastMessageAt: timestamp(row.last_message_at),
         unread: row.unread,
       })),
@@ -145,12 +159,19 @@ function conversationRoutes({ pool, notifier, limits }) {
     const isReporter = conversation.reporter_id === req.user.id;
     const counterpartId = isReporter ? conversation.participant_id : conversation.reporter_id;
 
+    const unlocked = isUnlocked(conversation);
     const [messages, item, counterpart, claims] = await Promise.all([
-      pool.query("SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at, id LIMIT 500", [id]),
+      unlocked
+        ? pool.query("SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at, id LIMIT 500", [id])
+        : Promise.resolve({ rows: [] }),
       pool.query("SELECT i.*, u.name AS user_name FROM items i LEFT JOIN users u ON u.id = i.user_id WHERE i.id = $1", [conversation.item_id]),
       pool.query("SELECT name, mobile_number FROM users WHERE id = $1", [counterpartId]),
       pool.query(
-        "SELECT id, status, answer, created_at, decided_at FROM claims WHERE item_id = $1 AND claimant_id = $2 ORDER BY created_at DESC",
+        `SELECT id, status, answer, created_at, decided_at, owner_id, finder_id, reward_paise, fee_paise, currency, agreement_category,
+                pricing_version, owner_accepted_at, return_confirmed_at, reward_status, reward_status_at, reward_issue_note,
+                (SELECT status FROM connection_payments p WHERE p.claim_id = claims.id ORDER BY
+                   CASE WHEN p.status IN ('paid','refund_pending','refunded') THEN 0 ELSE 1 END, p.created_at DESC LIMIT 1) AS payment_status
+         FROM claims WHERE item_id = $1 AND claimant_id = $2 ORDER BY created_at DESC`,
         [conversation.item_id, conversation.participant_id]
       ),
     ]);
@@ -171,9 +192,13 @@ function conversationRoutes({ pool, notifier, limits }) {
           ...publicItem(itemRow, images.get(itemRow.id) || []),
           available: !itemRow.deleted_at && itemRow.moderation_state === "visible",
         },
+        locked: !unlocked,
+        lockedReason: unlocked ? null : conversation.locked_reason || "payment_required",
+        unlockSource: conversation.unlock_source || null,
+        viewerRole: claims.rows[0] ? (claims.rows[0].owner_id === req.user.id ? "owner" : "finder") : null,
         counterpart: {
           displayName: displayName(counterpart.rows[0]?.name),
-          phone: counterpartShares ? counterpart.rows[0]?.mobile_number || null : null,
+          phone: unlocked && counterpartShares ? counterpart.rows[0]?.mobile_number || null : null,
         },
         sharingMyPhone: isReporter ? conversation.reporter_shares_phone : conversation.participant_shares_phone,
         messages: messages.rows.map((row) => serializeMessage(row, req.user.id)),
@@ -183,6 +208,12 @@ function conversationRoutes({ pool, notifier, limits }) {
           answer: row.answer,
           createdAt: timestamp(row.created_at),
           decidedAt: timestamp(row.decided_at),
+          agreement: row.owner_accepted_at
+            ? { category: row.agreement_category, rewardPaise: row.reward_paise, feePaise: row.fee_paise, currency: row.currency, pricingVersion: row.pricing_version }
+            : null,
+          payment: { status: row.payment_status || "none" },
+          returnConfirmedAt: timestamp(row.return_confirmed_at),
+          reward: { status: row.reward_status, at: timestamp(row.reward_status_at), note: row.reward_issue_note || null },
         })),
       },
     });
@@ -193,6 +224,7 @@ function conversationRoutes({ pool, notifier, limits }) {
     const input = messageSchema.parse(req.body || {});
     const result = await withTransaction(pool, async (db) => {
       const conversation = await loadForParticipant(db, id, req.user, { forUpdate: true });
+      assertUnlocked(conversation);
       const item = await loadItem(db, conversation.item_id);
       if (!item || item.deleted_at || item.moderation_state !== "visible") {
         throw new HttpError(410, "This listing is no longer available, so the conversation is closed", "item_unavailable");
@@ -207,6 +239,7 @@ function conversationRoutes({ pool, notifier, limits }) {
     const id = parseId(req.params.id, "Conversation ID");
     const { share } = z.object({ share: z.boolean() }).strict().parse(req.body || {});
     const conversation = await loadForParticipant(pool, id, req.user);
+    assertUnlocked(conversation);
     if (share && !req.user.mobile_number) {
       throw new HttpError(400, "Add a phone number in your account settings first", "no_phone");
     }
